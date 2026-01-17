@@ -3,7 +3,6 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$(dirname "$SCRIPT_DIR")" && pwd)"
-DOCKER_DIR="$ROOT_DIR/docker"
 TESTDATA_DIR="$ROOT_DIR/testdata"
 
 echo "=== Python Verification ==="
@@ -26,7 +25,7 @@ fi
 echo ""
 echo "Running Python verification..."
 
-python3 "$DOCKER_DIR/generate_reference.py"
+python3 "$SCRIPT_DIR/generate_reference.py"
 
 echo ""
 echo "Python verification complete. Reference outputs saved to $TESTDATA_DIR/python/"

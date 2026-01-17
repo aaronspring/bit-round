@@ -3,7 +3,6 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$(dirname "$SCRIPT_DIR")" && pwd)"
-DOCKER_DIR="$ROOT_DIR/docker"
 TESTDATA_DIR="$ROOT_DIR/testdata"
 
 echo "=== Julia Verification ==="
@@ -16,7 +15,7 @@ fi
 echo ""
 echo "Running Julia verification..."
 
-julia "$DOCKER_DIR/generate_reference.jl"
+julia "$SCRIPT_DIR/generate_reference.jl"
 
 echo ""
 echo "Julia verification complete. Reference outputs saved to $TESTDATA_DIR/julia/"
