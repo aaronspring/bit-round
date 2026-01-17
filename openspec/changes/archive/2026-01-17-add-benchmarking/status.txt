@@ -1,1 +1,0 @@
-Implementation status: PARTIAL (core benchmarks done, ~~Docker-based benchmarking~~ not implemented, ~~MB/s throughput, f64, various nbits~~ out of scope, Results analysis/speedup scripts ✓ implemented in scripts/run_benchmarks.sh)
