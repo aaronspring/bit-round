@@ -1,7 +1,0 @@
-FROM julia:1.10
-
-WORKDIR /data
-
-COPY generate_reference.jl .
-
-CMD ["julia", "generate_reference.jl"]

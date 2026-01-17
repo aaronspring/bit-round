@@ -6,18 +6,17 @@ ROOT_DIR="$(cd "$(dirname "$SCRIPT_DIR")" && pwd)"
 DOCKER_DIR="$ROOT_DIR/docker"
 TESTDATA_DIR="$ROOT_DIR/testdata"
 
-echo "=== Julia Verification via Docker ==="
-echo "Building Julia verification image..."
+echo "=== Julia Verification ==="
 
-docker build -t bitround-julia-verification -f "$DOCKER_DIR/Dockerfile.julia" "$DOCKER_DIR"
+if ! command -v julia &> /dev/null; then
+    echo "Error: julia is not installed. Please install Julia."
+    exit 1
+fi
 
 echo ""
 echo "Running Julia verification..."
 
-docker run --rm \
-    -v "$TESTDATA_DIR/inputs:/data/inputs" \
-    -v "$TESTDATA_DIR/julia:/data/outputs" \
-    bitround-julia-verification
+julia "$DOCKER_DIR/generate_reference.jl"
 
 echo ""
 echo "Julia verification complete. Reference outputs saved to $TESTDATA_DIR/julia/"

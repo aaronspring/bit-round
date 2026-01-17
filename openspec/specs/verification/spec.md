@@ -1,7 +1,8 @@
 # verification Specification
 
 ## Purpose
-TBD - created by archiving change add-python-julia-verification. Update Purpose after archive.
+Verify that the Rust bitround implementation produces bit-identical output to Python numcodecs and Julia bitround.jl reference implementations using locally-installed tools.
+
 ## Requirements
 ### Requirement: Python numcodecs Verification
 The Rust implementation SHALL produce bit-identical output to Python numcodecs bitround.
@@ -71,39 +72,22 @@ The verification tests SHALL cover a range of nbits values and data patterns.
 - **WHEN** testing with zeros, constants, random values, and edge values
 - **THEN** all tests SHALL pass with bit-identical output
 
-### Requirement: Docker-Based Verification
-Reference implementations SHALL run in Docker containers to ensure reproducibility and eliminate local environment dependency.
+### Requirement: Local Reference Implementation Verification
+Reference implementations SHALL run using locally installed Python and Julia to generate verification data.
 
-#### Scenario: Python verification via Docker
-- **WHEN** running `docker run --rm -v $(pwd)/testdata:/data python-verification`
-- **THEN** Python numcodecs bitround outputs SHALL be generated and saved to testdata/
-- **AND** Docker image SHALL contain Python with numcodecs installed
+#### Scenario: Python verification via local installation
+- **WHEN** running `scripts/verify_python.sh`
+- **THEN** Python numcodecs bitround outputs SHALL be generated and saved to testdata/python/
+- **AND** Python with numcodecs SHALL be installed via pip
 
-#### Scenario: Julia verification via Docker
-- **WHEN** running `docker run --rm -v $(pwd)/testdata:/data julia-verification`
-- **THEN** Julia bitround.jl outputs SHALL be generated and saved to testdata/
-- **AND** Docker image SHALL contain Julia with bitround.jl installed
+#### Scenario: Julia verification via local installation
+- **WHEN** running `scripts/verify_julia.sh`
+- **THEN** Julia bitround.jl outputs SHALL be generated and saved to testdata/julia/
+- **AND** Julia with required packages SHALL be available locally
 
-#### Scenario: Reproducible verification
-- **WHEN** running Docker verification on any machine
-- **THEN** outputs SHALL be identical to previously generated reference outputs
-- **AND** Docker image versions SHALL be pinned for reproducibility
-
-### Requirement: Reference Test Data
-Verification SHALL use pre-generated reference test data committed to the repository.
-
-#### Scenario: Reference data for Python comparison
-- **WHEN** Rust verification tests run
-- **THEN** they SHALL compare against reference outputs in `testdata/python/`
-- **AND** reference outputs SHALL be generated via Docker Python verification
-
-#### Scenario: Reference data for Julia comparison
-- **WHEN** Rust verification tests run
-- **THEN** they SHALL compare against reference outputs in `testdata/julia/`
-- **AND** reference outputs SHALL be generated via Docker Julia verification
-
-#### Scenario: Test data formats
-- **WHEN** generating reference data
-- **THEN** outputs SHALL be saved as binary files (.bin) with metadata
-- **AND** input arrays SHALL be saved alongside expected outputs
+#### Scenario: Prerequisites for verification
+- **WHEN** running verification scripts
+- **THEN** Python 3 with numpy and numcodecs SHALL be available
+- **AND** Julia with LibGit2 and standard libraries SHALL be available
+- **OR** scripts SHALL fail with clear error messages indicating missing dependencies
 
