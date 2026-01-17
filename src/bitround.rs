@@ -21,7 +21,9 @@ impl BitroundError {
 }
 
 /// IEEE Float types and complex numbers (mirroring Julia's IEEEFloat_and_complex)
-pub trait IEEEFloat: Copy + std::ops::AddAssign + std::ops::SubAssign + std::cmp::PartialOrd + std::fmt::Debug {
+pub trait IEEEFloat:
+    Copy + std::ops::AddAssign + std::ops::SubAssign + std::cmp::PartialOrd + std::fmt::Debug
+{
     fn to_bits(self) -> u64;
     fn from_bits(bits: u64) -> Self;
     fn sign_bits() -> u32;
@@ -41,12 +43,24 @@ impl IEEEFloat for f32 {
         f32::from_bits(bits as u32)
     }
 
-    fn sign_bits() -> u32 { 1 }
-    fn exponent_bits() -> u32 { 8 }
-    fn significand_bits() -> u32 { 23 }
-    fn sign_mask() -> u64 { 0x80000000u64 }
-    fn significand_mask() -> u64 { 0x007FFFFFu64 }
-    fn exponent_mask() -> u64 { 0x7F800000u64 }
+    fn sign_bits() -> u32 {
+        1
+    }
+    fn exponent_bits() -> u32 {
+        8
+    }
+    fn significand_bits() -> u32 {
+        23
+    }
+    fn sign_mask() -> u64 {
+        0x80000000u64
+    }
+    fn significand_mask() -> u64 {
+        0x007FFFFFu64
+    }
+    fn exponent_mask() -> u64 {
+        0x7F800000u64
+    }
 }
 
 impl IEEEFloat for f64 {
@@ -58,12 +72,24 @@ impl IEEEFloat for f64 {
         f64::from_bits(bits)
     }
 
-    fn sign_bits() -> u32 { 1 }
-    fn exponent_bits() -> u32 { 11 }
-    fn significand_bits() -> u32 { 52 }
-    fn sign_mask() -> u64 { 0x8000000000000000u64 }
-    fn significand_mask() -> u64 { 0x007FFFFFFFFFFFFFu64 }
-    fn exponent_mask() -> u64 { 0x7FF0000000000000u64 }
+    fn sign_bits() -> u32 {
+        1
+    }
+    fn exponent_bits() -> u32 {
+        11
+    }
+    fn significand_bits() -> u32 {
+        52
+    }
+    fn sign_mask() -> u64 {
+        0x8000000000000000u64
+    }
+    fn significand_mask() -> u64 {
+        0x007FFFFFFFFFFFFFu64
+    }
+    fn exponent_mask() -> u64 {
+        0x7FF0000000000000u64
+    }
 }
 
 /// Shift integer to push the mantissa in the right position. Used to determine
@@ -82,13 +108,13 @@ fn get_shift<T: IEEEFloat>(keepbits: u32) -> i32 {
 /// Technically ulp/2 here is just smaller than ulp/2 which rounds down the ties. For
 /// a tie round up +1 is added in `round(T,keepbits)`.
 fn get_ulp_half<T: IEEEFloat>(keepbits: u32) -> u64 {
-    !unsigned(!T::significand_mask() >> (keepbits + 1))
+    !to_unsigned_u64(!T::significand_mask() >> (keepbits + 1))
 }
 
 /// Returns a mask that's 1 for all bits that are kept after rounding and 0 for the
 /// discarded trailing bits.
 fn get_keep_mask<T: IEEEFloat>(keepbits: u32) -> u64 {
-    unsigned(!T::significand_mask() >> keepbits)
+    to_unsigned_u64(!T::significand_mask() >> keepbits)
 }
 
 /// Returns a mask that's `1` for a given `mantissabit` and `0` else. Mantissa bits
@@ -99,8 +125,12 @@ fn get_bit_mask<T: IEEEFloat>(mantissabit: i32) -> u64 {
 }
 
 /// Helper function to convert signed to unsigned for bit operations
-fn unsigned(x: u64) -> u64 { x }
-fn unsigned(x: u32) -> u32 { x }
+fn to_unsigned_u64(x: u64) -> u64 {
+    x
+}
+fn to_unsigned_u32(x: u32) -> u32 {
+    x
+}
 
 /// IEEE's round to nearest tie to even for f32/f64
 fn round_ieee<T: IEEEFloat>(x: T, ulp_half: u64, shift: i32, keepmask: u64) -> T {
@@ -476,13 +506,13 @@ pub mod transformations {
         let ui = x.to_bits();
         let nbits = 8 * std::mem::size_of::<u64>() as u32;
         let mut result: u64 = 0;
-        
+
         for i in 0..nbits {
             if (ui >> i) & 1 == 1 {
                 result |= 1 << (nbits - 1 - i);
             }
         }
-        
+
         T::from_bits(result)
     }
 
@@ -492,14 +522,14 @@ pub mod transformations {
         if data.is_empty() {
             return output;
         }
-        
+
         let mut prev = data[0].to_bits();
         for value in data {
             let current = value.to_bits();
             output.push(current ^ prev);
             prev = current;
         }
-        
+
         output
     }
 
@@ -509,14 +539,14 @@ pub mod transformations {
         if data.is_empty() {
             return output;
         }
-        
+
         let mut prev = 0u64;
         for &delta in data {
             let current = prev ^ delta;
             output.push(T::from_bits(current));
             prev = current;
         }
-        
+
         output
     }
 
@@ -526,7 +556,7 @@ pub mod transformations {
         let exp_bits = T::exponent_bits();
         let biased_exp = ((ui >> T::significand_bits()) & ((1 << exp_bits) - 1)) as i32;
         let exponent_bias = (1 << (exp_bits - 1)) - 1;
-        
+
         biased_exp as i32 - exponent_bias
     }
 
@@ -545,22 +575,30 @@ pub mod information {
     /// Counts the occurrences of the 1-bit in bit position i across all elements of A
     pub fn bitcount_u32(data: &[u32], bit_position: usize) -> usize {
         let nbits = 32usize;
-        assert!(bit_position < nbits, "Bit position {} out of range for 32-bit type", bit_position);
-        
+        assert!(
+            bit_position < nbits,
+            "Bit position {} out of range for 32-bit type",
+            bit_position
+        );
+
         let shift = nbits - bit_position;
         let mask = 1u32 << shift;
-        
+
         data.iter().filter(|&&x| (x & mask) >> shift == 1).count()
     }
 
     /// Counts the occurrences of the 1-bit in bit position i across all elements of A
     pub fn bitcount_u64(data: &[u64], bit_position: usize) -> usize {
         let nbits = 64usize;
-        assert!(bit_position < nbits, "Bit position {} out of range for 64-bit type", bit_position);
-        
+        assert!(
+            bit_position < nbits,
+            "Bit position {} out of range for 64-bit type",
+            bit_position
+        );
+
         let shift = nbits - bit_position;
         let mask = 1u64 << shift;
-        
+
         data.iter().filter(|&&x| (x & mask) >> shift == 1).count()
     }
 
@@ -568,7 +606,7 @@ pub mod information {
     pub fn bitcount_array_f32(data: &[f32]) -> Vec<usize> {
         let nbits = 32usize;
         let uint_data: Vec<u32> = data.iter().map(|&x| x.to_bits()).collect();
-        
+
         (0..nbits).map(|i| bitcount_u32(&uint_data, i)).collect()
     }
 
@@ -576,7 +614,7 @@ pub mod information {
     pub fn bitcount_array_f64(data: &[f64]) -> Vec<usize> {
         let nbits = 64usize;
         let uint_data: Vec<u64> = data.iter().map(|&x| x.to_bits()).collect();
-        
+
         (0..nbits).map(|i| bitcount_u64(&uint_data, i)).collect()
     }
 
@@ -585,11 +623,13 @@ pub mod information {
         let counts = bitcount_array_f32(data);
         let nelements = data.len();
         let nbits = 32usize;
-        
-        (0..nbits).map(|i| {
-            let p = counts[i] as f64 / nelements as f64;
-            entropy_binary(p, base)
-        }).collect()
+
+        (0..nbits)
+            .map(|i| {
+                let p = counts[i] as f64 / nelements as f64;
+                entropy_binary(p, base)
+            })
+            .collect()
     }
 
     /// Returns entropy for occurrence of 0,1 in every bit position
@@ -597,11 +637,13 @@ pub mod information {
         let counts = bitcount_array_f64(data);
         let nelements = data.len();
         let nbits = 64usize;
-        
-        (0..nbits).map(|i| {
-            let p = counts[i] as f64 / nelements as f64;
-            entropy_binary(p, base)
-        }).collect()
+
+        (0..nbits)
+            .map(|i| {
+                let p = counts[i] as f64 / nelements as f64;
+                entropy_binary(p, base)
+            })
+            .collect()
     }
 
     /// Binary entropy function
@@ -617,13 +659,13 @@ pub mod information {
     /// Bitpair counter for mutual information
     pub fn bitpair_count_f32(data1: &[f32], data2: &[f32]) -> Vec<[[usize; 2]; 2]> {
         assert_eq!(data1.len(), data2.len(), "Arrays must have same length");
-        
+
         let nbits = 32usize;
         let uint_data1: Vec<u32> = data1.iter().map(|&x| x.to_bits()).collect();
         let uint_data2: Vec<u32> = data2.iter().map(|&x| x.to_bits()).collect();
-        
+
         let mut counters: Vec<[[usize; 2]; 2]> = vec![[[0; 2]; 2]; nbits];
-        
+
         for (a, b) in uint_data1.iter().zip(uint_data2.iter()) {
             for i in 0..nbits {
                 let shift = nbits - i;
@@ -633,20 +675,20 @@ pub mod information {
                 counters[i][bit_a][bit_b] += 1;
             }
         }
-        
+
         counters
     }
 
     /// Bitpair counter for mutual information
     pub fn bitpair_count_f64(data1: &[f64], data2: &[f64]) -> Vec<[[usize; 2]; 2]> {
         assert_eq!(data1.len(), data2.len(), "Arrays must have same length");
-        
+
         let nbits = 64usize;
         let uint_data1: Vec<u64> = data1.iter().map(|&x| x.to_bits()).collect();
         let uint_data2: Vec<u64> = data2.iter().map(|&x| x.to_bits()).collect();
-        
+
         let mut counters: Vec<[[usize; 2]; 2]> = vec![[[0; 2]; 2]; nbits];
-        
+
         for (a, b) in uint_data1.iter().zip(uint_data2.iter()) {
             for i in 0..nbits {
                 let shift = nbits - i;
@@ -656,7 +698,7 @@ pub mod information {
                 counters[i][bit_a][bit_b] += 1;
             }
         }
-        
+
         counters
     }
 
@@ -665,10 +707,10 @@ pub mod information {
         let mut mutual_info = 0.0f64;
         let nx = 2;
         let ny = 2;
-        
+
         let px: [f64; 2] = [pmf[0][0] + pmf[0][1], pmf[1][0] + pmf[1][1]];
         let py: [f64; 2] = [pmf[0][0] + pmf[1][0], pmf[0][1] + pmf[1][1]];
-        
+
         for j in 0..ny {
             for i in 0..nx {
                 if pmf[i][j] > 0.0 {
@@ -676,7 +718,7 @@ pub mod information {
                 }
             }
         }
-        
+
         mutual_info / base.log(2.0)
     }
 
@@ -684,28 +726,46 @@ pub mod information {
     pub fn mutual_information_f32(data1: &[f32], data2: &[f32], base: f64) -> Vec<f64> {
         let counters = bitpair_count_f32(data1, data2);
         let nelements = data1.len();
-        
-        counters.iter().map(|counter| {
-            let pmf: [[f64; 2]; 2] = [
-                [counter[0][0] as f64 / nelements as f64, counter[0][1] as f64 / nelements as f64],
-                [counter[1][0] as f64 / nelements as f64, counter[1][1] as f64 / nelements as f64]
-            ];
-            mutual_information_from_pmf(&pmf, base)
-        }).collect()
+
+        counters
+            .iter()
+            .map(|counter| {
+                let pmf: [[f64; 2]; 2] = [
+                    [
+                        counter[0][0] as f64 / nelements as f64,
+                        counter[0][1] as f64 / nelements as f64,
+                    ],
+                    [
+                        counter[1][0] as f64 / nelements as f64,
+                        counter[1][1] as f64 / nelements as f64,
+                    ],
+                ];
+                mutual_information_from_pmf(&pmf, base)
+            })
+            .collect()
     }
 
     /// Mutual bitwise information of elements in input arrays
     pub fn mutual_information_f64(data1: &[f64], data2: &[f64], base: f64) -> Vec<f64> {
         let counters = bitpair_count_f64(data1, data2);
         let nelements = data1.len();
-        
-        counters.iter().map(|counter| {
-            let pmf: [[f64; 2]; 2] = [
-                [counter[0][0] as f64 / nelements as f64, counter[0][1] as f64 / nelements as f64],
-                [counter[1][0] as f64 / nelements as f64, counter[1][1] as f64 / nelements as f64]
-            ];
-            mutual_information_from_pmf(&pmf, base)
-        }).collect()
+
+        counters
+            .iter()
+            .map(|counter| {
+                let pmf: [[f64; 2]; 2] = [
+                    [
+                        counter[0][0] as f64 / nelements as f64,
+                        counter[0][1] as f64 / nelements as f64,
+                    ],
+                    [
+                        counter[1][0] as f64 / nelements as f64,
+                        counter[1][1] as f64 / nelements as f64,
+                    ],
+                ];
+                mutual_information_from_pmf(&pmf, base)
+            })
+            .collect()
     }
 
     /// Redundancy of two arrays (normalized mutual information)
@@ -713,15 +773,14 @@ pub mod information {
         let mi = mutual_information_f32(data1, data2, base);
         let ha = bitcount_entropy_f32(data1, base);
         let hb = bitcount_entropy_f32(data2, base);
-        
-        mi.iter().enumerate().map(|(i, &m)| {
-            let hab = ha[i] + hb[i];
-            if hab > 0.0 {
-                2.0 * m / hab
-            } else {
-                0.0
-            }
-        }).collect()
+
+        mi.iter()
+            .enumerate()
+            .map(|(i, &m)| {
+                let hab = ha[i] + hb[i];
+                if hab > 0.0 { 2.0 * m / hab } else { 0.0 }
+            })
+            .collect()
     }
 
     /// Redundancy of two arrays (normalized mutual information)
@@ -729,15 +788,14 @@ pub mod information {
         let mi = mutual_information_f64(data1, data2, base);
         let ha = bitcount_entropy_f64(data1, base);
         let hb = bitcount_entropy_f64(data2, base);
-        
-        mi.iter().enumerate().map(|(i, &m)| {
-            let hab = ha[i] + hb[i];
-            if hab > 0.0 {
-                2.0 * m / hab
-            } else {
-                0.0
-            }
-        }).collect()
+
+        mi.iter()
+            .enumerate()
+            .map(|(i, &m)| {
+                let hab = ha[i] + hb[i];
+                if hab > 0.0 { 2.0 * m / hab } else { 0.0 }
+            })
+            .collect()
     }
 
     /// Bitwise information content of array (from mutual information in adjacent entries)
@@ -745,10 +803,10 @@ pub mod information {
         if data.len() < 2 {
             return vec![0.0; 32];
         }
-        
-        let data1 = &data[..data.len()-1];
+
+        let data1 = &data[..data.len() - 1];
         let data2 = &data[1..];
-        
+
         mutual_information_f32(data1, data2, base)
     }
 
@@ -757,10 +815,10 @@ pub mod information {
         if data.len() < 2 {
             return vec![0.0; 64];
         }
-        
-        let data1 = &data[..data.len()-1];
+
+        let data1 = &data[..data.len() - 1];
         let data2 = &data[1..];
-        
+
         mutual_information_f64(data1, data2, base)
     }
 
@@ -768,13 +826,13 @@ pub mod information {
     pub fn bitpattern_entropy_f32(data: &mut [f32], base: f64) -> f64 {
         let mut uint_data: Vec<u32> = data.iter().map(|&x| x.to_bits()).collect();
         uint_data.sort();
-        
+
         let n = uint_data.len();
         let mut entropy = 0.0f64;
         let mut count = 1usize;
-        
-        for i in 0..n-1 {
-            if uint_data[i] == uint_data[i+1] {
+
+        for i in 0..n - 1 {
+            if uint_data[i] == uint_data[i + 1] {
                 count += 1;
             } else {
                 let p = count as f64 / n as f64;
@@ -782,7 +840,7 @@ pub mod information {
                 count = 1;
             }
         }
-        
+
         let p = count as f64 / n as f64;
         entropy -= p * p.log(base);
         entropy / base.log(2.0)
@@ -792,13 +850,13 @@ pub mod information {
     pub fn bitpattern_entropy_f64(data: &mut [f64], base: f64) -> f64 {
         let mut uint_data: Vec<u64> = data.iter().map(|&x| x.to_bits()).collect();
         uint_data.sort();
-        
+
         let n = uint_data.len();
         let mut entropy = 0.0f64;
         let mut count = 1usize;
-        
-        for i in 0..n-1 {
-            if uint_data[i] == uint_data[i+1] {
+
+        for i in 0..n - 1 {
+            if uint_data[i] == uint_data[i + 1] {
                 count += 1;
             } else {
                 let p = count as f64 / n as f64;
@@ -806,7 +864,7 @@ pub mod information {
                 count = 1;
             }
         }
-        
+
         let p = count as f64 / n as f64;
         entropy -= p * p.log(base);
         entropy / base.log(2.0)
@@ -824,32 +882,32 @@ pub mod information {
         // Approximation of inverse error function
         let a = [
             -3.969683028665376e+01,
-             2.209460984245205e+02,
+            2.209460984245205e+02,
             -2.759285104469687e+02,
-             1.383577518672690e+02,
+            1.383577518672690e+02,
             -3.066479806614716e+01,
-             2.506628277459239e+00
+            2.506628277459239e+00,
         ];
         let b = [
             -5.447609879822406e+01,
-             1.615858368580409e+02,
+            1.615858368580409e+02,
             -1.556989798598866e+02,
-             6.680131188771972e+01,
-            -1.328068155288572e+01
+            6.680131188771972e+01,
+            -1.328068155288572e+01,
         ];
         let c = [
             -7.784894002430293e-03,
             -3.223964580411365e-01,
             -2.400758277161838e+00,
             -2.549732539343734e+00,
-             4.374664141464968e+00,
-             2.938163982698783e+00
+            4.374664141464968e+00,
+            2.938163982698783e+00,
         ];
         let d = [
-             7.784695709041462e-03,
-             3.224671290700398e-01,
-             2.445134137142996e+00,
-             3.754408661907416e+00
+            7.784695709041462e-03,
+            3.224671290700398e-01,
+            2.445134137142996e+00,
+            3.754408661907416e+00,
         ];
 
         let p_low = 0.02425;
@@ -857,19 +915,19 @@ pub mod information {
 
         if p < p_low {
             let q = (-2.0 * p).sqrt();
-            let num = (((((c[0]*q + c[1])*q + c[2])*q + c[3])*q + c[4])*q + c[5]);
-            let den = ((((d[0]*q + d[1])*q + d[2])*q + d[3])*q + 1.0);
+            let num = (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]);
+            let den = ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1.0);
             return (num / den).exp().ln();
         } else if p <= p_high {
             let q = p - 0.5;
             let r = q * q;
-            let num = (((((a[0]*r + a[1])*r + a[2])*r + a[3])*r + a[4])*r + a[5])*q;
-            let den = (((((b[0]*r + b[1])*r + b[2])*r + b[3])*r + b[4])*r + 1.0);
+            let num = (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q;
+            let den = (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1.0);
             return num / den;
         } else {
             let q = (-2.0 * (1.0 - p)).sqrt();
-            let num = (((((c[0]*q + c[1])*q + c[2])*q + c[3])*q + c[4])*q + c[5]);
-            let den = ((((d[0]*q + d[1])*q + d[2])*q + d[3])*q + 1.0);
+            let num = (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]);
+            let den = ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1.0);
             return -(num / den).exp().ln();
         }
     }

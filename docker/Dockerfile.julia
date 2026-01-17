@@ -1,0 +1,10 @@
+FROM julia:1.10
+
+WORKDIR /data
+
+COPY generate_reference.jl .
+COPY generate_inputs.py .
+
+RUN python3 generate_inputs.py
+
+CMD ["julia", "generate_reference.jl"]
