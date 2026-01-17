@@ -12,21 +12,27 @@ Benchmarks measure encode/decode performance for 3D arrays (Float32) with edge l
 | Array Size | Elements | Implementation | Encode (μs) | Decode (μs) |
 |------------|----------|----------------|-------------|-------------|
 | 1×1×1 | 1 | Python | 10.89 ± 1.26 | 1.80 ± 1.79 |
-| | | **Rust** | **0.06 ± 0.03** | **0.09 ± 0.08** |
+| | | **Julia** | **0.04 ± 0.01** | **0.03 ± 0.04** |
+| | | Rust | 0.06 ± 0.03 | 0.09 ± 0.08 |
 | 10×10×10 | 1,000 | Python | 10.44 ± 0.69 | 1.10 ± 0.20 |
-| | | **Rust** | **0.84 ± 0.02** | 0.96 ± 0.97 |
+| | | **Julia** | **0.17 ± 0.05** | **0.11 ± 0.06** |
+| | | Rust | 0.84 ± 0.02 | 0.96 ± 0.97 |
 | 100×100×100 | 1,000,000 | Python | 1264.83 ± 121.83 | 1.35 ± 0.79 |
-| | | **Rust** | **833.18 ± 24.35** | 629.72 ± 71.18 |
+| | | **Julia** | **134.47 ± 2.85** | 126.58 ± 41.67 |
+| | | Rust | 833.18 ± 24.35 | 629.72 ± 71.18 |
 | 1000×1000×1000 | 1,000,000,000 | Python | 32,906,771 ± 353,711 | 1,823 ± 1,523 |
-| | | **Rust** | **835,025 ± 2,165** | 3,087,767 ± 3,578,593 |
+| | | Julia | 6,083,679 ± 2,928,600 | 4,573,157 ± 487,245 |
+| | | **Rust** | **835,025 ± 2,165** | **3,087,767 ± 3,578,593** |
 
 ### Key Findings
 
-- **Small arrays (1-1000 elements)**: Rust is 12-181× faster for encoding
-- **Large arrays (1M+ elements)**: Rust is 1.5-39× faster for encoding
+- **Small arrays (1-1000 elements)**: Julia is fastest for encode (0.04-0.17 μs), Rust is competitive at 1 element (0.06 μs), Python is slowest
+- **Large arrays (1M elements)**: Rust is fastest (833 μs encode, 630 μs decode), Julia is 1.6× slower, Python is 1.5× slower for encode
+- **1B elements**: Rust is 7.3× faster for encode than Julia, 39× faster than Python; Julia is 5.3× faster than Python for encode
 - **Python decode**: Unusually fast (~1-2 μs) for small arrays due to vectorized numcodecs implementation
-- **Decode comparison**: Python appears faster for decode at larger sizes (likely numcodecs vectorization advantage)
-- **Memory efficiency**: Both implementations handle 1B element arrays; Rust has more consistent decode times
+- **Julia performance**: Competitive with Rust for small arrays, 1.6× slower at 1M elements, 5.3× slower than Rust at 1B elements
+- **Decode comparison**: Rust and Julia are comparable at 1M elements; Python appears faster for decode at larger sizes (likely numcodecs vectorization advantage)
+- **Memory efficiency**: All implementations handle 1B element arrays; Rust has more consistent decode times
 
 > **Warning**: These benchmarks may be biased. See [A Warning on
 > Mechanical Sympathy](https://matthewrocklin.com/blog/work/2017/03/09/biased-benchmarks)

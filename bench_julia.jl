@@ -149,7 +149,7 @@ function decode_bitround_array!(result::Vector{Float32}, x::Vector{UInt32}, nbit
 end
 
 function run_benchmarks(; nbits::Int=16, n_warmup::Int=3, n_iterations::Int=10)
-    edge_sizes = [1, 10, 100]
+    edge_sizes = [1, 10, 100, 1000]
     results = Dict{String, Any}(
         "julia" => Dict{String, Any}(),
         "machine_specs" => get_machine_specs()
