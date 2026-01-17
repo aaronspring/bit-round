@@ -18,13 +18,15 @@ docker build -t bitround-julia-verification -f "$ROOT_DIR/docker/Dockerfile.juli
 echo ""
 echo "Running Python verification..."
 docker run --rm \
-    -v "$TESTDATA_DIR:/data/outputs" \
+    -v "$TESTDATA_DIR/inputs:/data/inputs" \
+    -v "$TESTDATA_DIR/python:/data/outputs" \
     bitround-python-verification
 
 echo ""
 echo "Running Julia verification..."
 docker run --rm \
-    -v "$TESTDATA_DIR:/data/outputs" \
+    -v "$TESTDATA_DIR/inputs:/data/inputs" \
+    -v "$TESTDATA_DIR/julia:/data/outputs" \
     bitround-julia-verification
 
 echo ""

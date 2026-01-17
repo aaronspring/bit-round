@@ -8,13 +8,13 @@ the encoded outputs as binary files for comparison with Rust implementation.
 import os
 import struct
 import numpy as np
-from numcodecs import Bitround
+from numcodecs import BitRound
 
 INPUT_DIR = "/data/inputs"
 OUTPUT_DIR = "/data/outputs"
 
-NBITS_F32 = [1, 8, 16, 24]
-NBITS_F64 = [1, 16, 32, 53]
+NBITS_F32 = [1, 8, 16, 23]
+NBITS_F64 = [1, 16, 32, 52]
 
 
 def save_binary(data: np.ndarray, filepath: str):
@@ -53,8 +53,8 @@ def run_python_verification():
             nbits_values = NBITS_F64
 
         for nbits in nbits_values:
-            bitround = Bitround(nbits=nbits)
-            encoded = bitround.encode(data)
+            codec = BitRound(keepbits=nbits)
+            encoded = codec.encode(data)
 
             base_name = filename.replace(".bin", "")
             output_path = os.path.join(OUTPUT_DIR, f"{base_name}_nbits{nbits}.bin")

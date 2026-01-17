@@ -128,35 +128,42 @@ fn get_bit_mask<T: IEEEFloat>(mantissabit: i32) -> u64 {
 fn to_unsigned_u64(x: u64) -> u64 {
     x
 }
-fn to_unsigned_u32(x: u32) -> u32 {
-    x
+
+/// Bitround algorithm matching numcodecs BitRound for f32
+fn bitround_numcodecs32(x: u32, nbits: u32) -> u32 {
+    let mantissa_bits = 23u32;
+    if nbits >= mantissa_bits {
+        return x;
+    }
+
+    let maskbits = mantissa_bits - nbits;
+    let all_set: u32 = !0;
+    let mask = (all_set >> maskbits) << maskbits;
+    let half_quantum1 = (1_u32 << (maskbits - 1)) - 1;
+
+    let ui = x;
+    let ui_add = ui.wrapping_add(((ui >> maskbits) & 1) + half_quantum1);
+    ui_add & mask
 }
 
-/// IEEE's round to nearest tie to even for f32/f64
-fn round_ieee<T: IEEEFloat>(x: T, ulp_half: u64, shift: i32, keepmask: u64) -> T {
-    let ui = x.to_bits();
-    let ui_add = ui.wrapping_add(ulp_half).wrapping_add((ui >> shift) & 1);
-    T::from_bits(ui_add & keepmask)
+/// Bitround algorithm matching numcodecs BitRound for f64
+fn bitround_numcodecs64(x: u64, nbits: u32) -> u64 {
+    let mantissa_bits = 52u32;
+    if nbits >= mantissa_bits {
+        return x;
+    }
+
+    let maskbits = mantissa_bits - nbits;
+    let all_set: u64 = !0;
+    let mask = (all_set >> maskbits) << maskbits;
+    let half_quantum1 = (1_u64 << (maskbits - 1)) - 1;
+
+    let ui = x;
+    let ui_add = ui.wrapping_add(((ui >> maskbits) & 1) + half_quantum1);
+    ui_add & mask
 }
 
 /// Scalar version of round that first obtains shift, ulp_half, keep_mask and then rounds
-fn round_scalar<T: IEEEFloat>(x: T, keepbits: u32) -> T {
-    let ulp_half = get_ulp_half::<T>(keepbits);
-    let shift = get_shift::<T>(keepbits);
-    let keepmask = get_keep_mask::<T>(keepbits);
-    round_ieee(x, ulp_half, shift, keepmask)
-}
-
-/// Checks a given `mantissabit` of `x` for evenness. 1=odd, 0=even.
-fn is_even_ieee<T: IEEEFloat>(x: T, mantissabit: i32) -> bool {
-    let bitmask = get_bit_mask::<T>(mantissabit);
-    (x.to_bits() & bitmask) == 0
-}
-
-/// Checks a given `mantissabit` of `x` for oddness. 1=odd, 0=even.
-fn is_odd_ieee<T: IEEEFloat>(x: T, mantissabit: i32) -> bool {
-    !is_even_ieee(x, mantissabit)
-}
 
 /// Bitshaving for floats. Sets trailing bits to 0 (round towards zero).
 fn shave<T: IEEEFloat>(x: T, keepmask: u64) -> T {
@@ -281,13 +288,10 @@ impl BitroundEncoder {
         }
 
         let mut output = Vec::with_capacity(data.len());
-        let ulp_half = get_ulp_half::<f32>(self.nbits as u32);
-        let shift = get_shift::<f32>(self.nbits as u32);
-        let keepmask = get_keep_mask::<f32>(self.nbits as u32);
 
         for &value in data {
-            let rounded = round_ieee(value, ulp_half, shift, keepmask);
-            output.push(rounded.to_bits() as u32);
+            let bits = bitround_numcodecs32(value.to_bits() as u32, self.nbits as u32);
+            output.push(bits);
         }
 
         Ok(output)
@@ -312,12 +316,19 @@ impl BitroundEncoder {
             )));
         }
 
-        let keepmask = get_keep_mask::<f32>(self.nbits as u32);
+        let mantissa_bits = 23u32;
+        let maskbits = mantissa_bits.saturating_sub(self.nbits as u32);
+        let mask = if maskbits == 0 {
+            !0u32
+        } else {
+            ((!0u32) >> maskbits) << maskbits
+        };
+
         let mut output = Vec::with_capacity(data.len());
 
         for &value in data {
-            let ui = value as u64 & keepmask;
-            output.push(f32::from_bits(ui as u32));
+            let ui = value & mask;
+            output.push(f32::from_bits(ui));
         }
 
         Ok(output)
@@ -344,13 +355,10 @@ impl BitroundEncoder {
         }
 
         let mut output = Vec::with_capacity(data.len());
-        let ulp_half = get_ulp_half::<f64>(self.nbits as u32);
-        let shift = get_shift::<f64>(self.nbits as u32);
-        let keepmask = get_keep_mask::<f64>(self.nbits as u32);
 
         for &value in data {
-            let rounded = round_ieee(value, ulp_half, shift, keepmask);
-            output.push(rounded.to_bits());
+            let bits = bitround_numcodecs64(value.to_bits(), self.nbits as u32);
+            output.push(bits);
         }
 
         Ok(output)
@@ -375,11 +383,18 @@ impl BitroundEncoder {
             )));
         }
 
-        let keepmask = get_keep_mask::<f64>(self.nbits as u32);
+        let mantissa_bits = 52u32;
+        let maskbits = mantissa_bits.saturating_sub(self.nbits as u32);
+        let mask = if maskbits == 0 {
+            !0u64
+        } else {
+            ((!0u64) >> maskbits) << maskbits
+        };
+
         let mut output = Vec::with_capacity(data.len());
 
         for &value in data {
-            let ui = value & keepmask;
+            let ui = value & mask;
             output.push(f64::from_bits(ui));
         }
 
@@ -570,7 +585,6 @@ pub mod transformations {
 /// Information theory functions (matching Julia's BitInformation.jl)
 pub mod information {
     use super::*;
-    use std::f64::consts::PI;
 
     /// Counts the occurrences of the 1-bit in bit position i across all elements of A
     pub fn bitcount_u32(data: &[u32], bit_position: usize) -> usize {
@@ -962,7 +976,7 @@ mod tests {
 
         for (original, recovered) in data.iter().zip(decoded.iter()) {
             let diff = (original - recovered).abs();
-            let tolerance = 2.0f32.powi(-(16 - 1));
+            let tolerance = 2.0f32.powi(-(16));
             assert!(diff < tolerance, "diff {} > tolerance {}", diff, tolerance);
         }
     }
@@ -975,9 +989,20 @@ mod tests {
         let decoded = encoder.decode_f64(&encoded).unwrap();
 
         for (original, recovered) in data.iter().zip(decoded.iter()) {
+            let abs_original = original.abs();
+            let tolerance = if abs_original > 0.0 {
+                abs_original * 2.0f64.powi(-(32))
+            } else {
+                2.0f64.powi(-(32))
+            };
             let diff = (original - recovered).abs();
-            let tolerance = 2.0f64.powi(-(32 - 1));
-            assert!(diff < tolerance, "diff {} > tolerance {}", diff, tolerance);
+            assert!(
+                diff < tolerance,
+                "diff {} > tolerance {} for value {}",
+                diff,
+                tolerance,
+                original
+            );
         }
     }
 

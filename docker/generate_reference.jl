@@ -12,8 +12,8 @@ using Random
 const INPUT_DIR = "/data/inputs"
 const OUTPUT_DIR = "/data/outputs"
 
-const NBITS_F32 = [1, 8, 16, 24]
-const NBITS_F64 = [1, 16, 32, 53]
+const NBITS_F32 = [1, 8, 16, 23]
+const NBITS_F64 = [1, 16, 32, 52]
 
 function save_binary(data::Vector{T}, filepath::String) where T
     open(filepath, "w") do io
@@ -42,34 +42,51 @@ function load_input(filepath::String)
 end
 
 """
-Julia bitround implementation based on bitround.jl
+Julia bitround implementation matching Python numcodecs BitRound.
+Uses IEEE round-to-nearest-tie-to-even.
 """
-function bitround(x::Float32, nbits::Int)
-    shift = 23 - nbits
-    keepmask = (0x007fffff >> nbits) << shift
+function bitround_ieee(x::Float32, nbits::Int)
+    mantissa_bits = 23
+    if nbits >= mantissa_bits
+        return x
+    end
+
+    shift = mantissa_bits - nbits
+    keepmask = UInt32(0x007fffff) << shift
 
     ui = reinterpret(UInt32, x)
-    ui_new = ui & keepmask
+    ulp_half = UInt32(1) << (shift - 1)
+    tie_bit = (ui >> shift) & UInt32(1)
+
+    ui_new = (ui + ulp_half + tie_bit) & keepmask
 
     return reinterpret(Float32, ui_new)
 end
 
-function bitround(x::Float64, nbits::Int)
-    shift = 52 - nbits
-    keepmask = (0x007fffffffffffff >> nbits) << shift
+function bitround_ieee(x::Float64, nbits::Int)
+    mantissa_bits = 52
+    if nbits >= mantissa_bits
+        return x
+    end
+
+    shift = mantissa_bits - nbits
+    keepmask = UInt64(0x007fffffffffffff) << shift
 
     ui = reinterpret(UInt64, x)
-    ui_new = ui & keepmask
+    ulp_half = UInt64(1) << (shift - 1)
+    tie_bit = (ui >> shift) & UInt64(1)
+
+    ui_new = (ui + ulp_half + tie_bit) & keepmask
 
     return reinterpret(Float64, ui_new)
 end
 
 function bitround_array(x::Vector{Float32}, nbits::Int)
-    return bitround.(x, nbits)
+    return bitround_ieee.(x, nbits)
 end
 
 function bitround_array(x::Vector{Float64}, nbits::Int)
-    return bitround.(x, nbits)
+    return bitround_ieee.(x, nbits)
 end
 
 function run_julia_verification()
@@ -78,7 +95,7 @@ function run_julia_verification()
     input_files = filter(f -> endswith(f, ".bin"), readdir(INPUT_DIR))
 
     println("Julia bitround reference output generation")
-    println("=" * 60)
+    println("=" ^ 60)
 
     for filename in sort(input_files)
         input_path = joinpath(INPUT_DIR, filename)
@@ -106,7 +123,7 @@ function run_julia_verification()
         end
     end
 
-    println("=" * 60)
+    println("=" ^ 60)
     println("Reference outputs saved to $(OUTPUT_DIR)")
 end
 

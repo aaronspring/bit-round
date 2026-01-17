@@ -15,7 +15,8 @@ echo ""
 echo "Running Julia verification..."
 
 docker run --rm \
-    -v "$TESTDATA_DIR:/data/outputs" \
+    -v "$TESTDATA_DIR/inputs:/data/inputs" \
+    -v "$TESTDATA_DIR/julia:/data/outputs" \
     bitround-julia-verification
 
 echo ""

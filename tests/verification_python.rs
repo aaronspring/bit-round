@@ -127,15 +127,15 @@ fn test_f32_encoding_python_zeros_nbits_8() {
 }
 
 #[test]
-fn test_f32_encoding_python_zeros_nbits_24() {
+fn test_f32_encoding_python_zeros_nbits_23() {
     let testdata_dir = Path::new(TESTDATA_DIR);
     let input_path = testdata_dir.join("inputs/zeros_f32.bin");
-    let expected_path = testdata_dir.join("python/zeros_f32_nbits24.bin");
+    let expected_path = testdata_dir.join("python/zeros_f32_nbits23.bin");
 
     let input = load_f32_from_binary(&input_path);
     let expected = load_u32_from_binary(&expected_path);
 
-    let encoder = BitroundEncoder::new_f32(24).unwrap();
+    let encoder = BitroundEncoder::new_f32(23).unwrap();
     let result = encoder.encode_f32(&input).unwrap();
 
     assert_eq!(result.len(), expected.len());

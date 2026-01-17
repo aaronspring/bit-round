@@ -15,7 +15,8 @@ echo ""
 echo "Running Python verification..."
 
 docker run --rm \
-    -v "$TESTDATA_DIR:/data/outputs" \
+    -v "$TESTDATA_DIR/inputs:/data/inputs" \
+    -v "$TESTDATA_DIR/python:/data/outputs" \
     bitround-python-verification
 
 echo ""
