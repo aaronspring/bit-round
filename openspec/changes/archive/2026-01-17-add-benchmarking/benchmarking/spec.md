@@ -1,5 +1,61 @@
 ## ADDED Requirements
 
+### Requirement: 3D Array Benchmarking
+The system SHALL benchmark 3D arrays with edge lengths of 10^n where n ranges from 0 to 3.
+
+#### Scenario: Edge length 10^0 (1x1x1)
+- **WHEN** encoding/decoding a 1x1x1 random f32 array with nbits=16
+- **THEN** the system SHALL record the timing
+
+#### Scenario: Edge length 10^1 (10x10x10)
+- **WHEN** encoding/decoding a 10x10x10 random f32 array with nbits=16
+- **THEN** the system SHALL record the timing
+
+#### Scenario: Edge length 10^2 (100x100x100)
+- **WHEN** encoding/decoding a 100x100x100 random f32 array with nbits=16
+- **THEN** the system SHALL record the timing
+
+#### Scenario: Edge length 10^3 (1000x1000x1000)
+- **WHEN** encoding/decoding a 1000x1000x1000 random f32 array with nbits=16
+- **THEN** the system SHALL record the timing
+
+### Requirement: Random Input Data
+The system SHALL use random input data for all benchmarks.
+
+#### Scenario: Random data generation
+- **WHEN** generating benchmark input arrays
+- **THEN** values SHALL be drawn from a random uniform distribution
+- **AND** a fixed seed SHALL be used for reproducibility
+
+### Requirement: Bitround-Only Timing
+The system SHALL only time the bitround encoding/decoding operation itself.
+
+#### Scenario: Isolated timing
+- **WHEN** timing benchmarks
+- **THEN** the system SHALL exclude data generation time
+- **AND** exclude memory allocation/deallocation time
+- **AND** exclude data transfer time
+- **AND** only measure the bitround encode/decode function call duration
+
+### Requirement: Benchmark Results Reporting
+The system SHALL provide a reporting function that generates copy-pasteable benchmark results.
+
+#### Scenario: Copy-pasteable report format
+- **WHEN** benchmarks complete
+- **THEN** the system SHALL generate a report with machine specifications including:
+  - Computer family (e.g., "MacBook M2 16GB")
+  - CPU model and cores
+  - Total RAM
+  - Operating system
+- **AND** the report SHALL include timing results in a format suitable for comparison across machines
+
+#### Scenario: Markdown report output
+- **WHEN** generating a report
+- **THEN** the system SHALL output results in markdown format
+- **AND** results SHALL include array dimensions, nbits, and timing in microseconds
+- **AND** the output SHALL be directly copy-pasteable for documentation or comparison
+- **AND** results SHALL be reported in the order: Python, Julia, Rust
+
 ### Requirement: Encoding Throughput Benchmark
 The system SHALL benchmark encoding throughput for Rust, Python, and Julia implementations.
 
@@ -27,28 +83,11 @@ The system SHALL benchmark decoding throughput for Rust, Python, and Julia imple
 - **WHEN** decoding a 1MB encoded f64 array with nbits=32
 - **THEN** the system SHALL report throughput in MB/s for Rust, Python, and Julia
 
-### Requirement: Array Size Scaling
-The system SHALL benchmark performance across multiple array sizes.
-
-#### Scenario: Small array performance
-- **WHEN** encoding/decoding arrays from 1KB to 100KB
-- **THEN** the system SHALL report throughput for each size
-- **AND** identify any fixed overhead effects
-
-#### Scenario: Large array performance
-- **WHEN** encoding/decoding arrays from 1MB to 100MB
-- **THEN** the system SHALL report throughput for each size
-- **AND** identify memory bandwidth limitations
-
 ### Requirement: Data Pattern Benchmarking
 The system SHALL benchmark with various data patterns to assess algorithm efficiency.
 
 #### Scenario: Zero array encoding
 - **WHEN** encoding an array of zeros
-- **THEN** the system SHALL measure throughput and compare across implementations
-
-#### Scenario: Random data encoding
-- **WHEN** encoding arrays with random float values
 - **THEN** the system SHALL measure throughput and compare across implementations
 
 #### Scenario: Climate-like data encoding

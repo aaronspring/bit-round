@@ -37,6 +37,8 @@ dependencies = [
  "fastrand",
  "oorandom",
  "rand",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
