@@ -1,8 +1,23 @@
-# bitround
+# bit-round
+
+> **Note**: This project is a personal learning exercise exploring Rust programming. The entire codebase was written by [opencode](https://opencode.ai) using the [MinMax M2.1 model](https://opencode.ai/docs/models/) under [spec-driven development](https://youtu.be/8rABwKRsec4?si=ZDUrifwn3xAJPmkU&t=380) with [openspec](https://github.com/Fission-AI/OpenSpec) 
+
+**TODO**: Update benchmarks to use single-core execution as specified in `openspec/changes/update-benchmarking-single-core/specs/benchmarking/spec.md`. Key changes:
+- Pin to single CPU core for fair language comparison
+- Track memory allocations for Julia (GC-disable) and Rust (jemalloc)
+- Report allocation counts and GC time separately
 
 Rust crate for bitwise information analysis and compression, inspired by [BitInformation.jl](https://github.com/milankl/BitInformation.jl). This implementation provides comprehensive bitwise operations including IEEE rounding modes, bit transformations, and information theory functions.
 
 ## Performance Benchmarks
+
+**TODO**: The current benchmarks may not accurately reflect single-core performance. Re-run benchmarks with:
+- Single-core thread pinning (`taskset -c 0` on Linux)
+- Julia GC disabled during timing
+- Consistent allocator (jemalloc/mimalloc for Rust)
+- CPU frequency locked to base clock
+
+See [BENCHMARK_SETUP.md](./BENCHMARK_SETUP.md) for methodology and [openspec/changes/update-benchmarking-single-core/RESEARCH.md](./openspec/changes/update-benchmarking-single-core/RESEARCH.md) for benchmarking best practices.
 
 Benchmarks measure encode/decode performance for 3D arrays (Float32) with edge lengths 10^n.
 
@@ -24,22 +39,17 @@ Benchmarks measure encode/decode performance for 3D arrays (Float32) with edge l
 | | | Julia | 6,083,679 ± 2,928,600 | 4,573,157 ± 487,245 |
 | | | **Rust** | **835,025 ± 2,165** | **3,087,767 ± 3,578,593** |
 
-### Key Findings
 
-- **Small arrays (1-1000 elements)**: Julia is fastest for encode (0.04-0.17 μs), Rust is competitive at 1 element (0.06 μs), Python is slowest
-- **Large arrays (1M elements)**: Rust is fastest (833 μs encode, 630 μs decode), Julia is 1.6× slower, Python is 1.5× slower for encode
-- **1B elements**: Rust is 7.3× faster for encode than Julia, 39× faster than Python; Julia is 5.3× faster than Python for encode
-- **Python decode**: Unusually fast (~1-2 μs) for small arrays due to vectorized numcodecs implementation
-- **Julia performance**: Competitive with Rust for small arrays, 1.6× slower at 1M elements, 5.3× slower than Rust at 1B elements
-- **Decode comparison**: Rust and Julia are comparable at 1M elements; Python appears faster for decode at larger sizes (likely numcodecs vectorization advantage)
-- **Memory efficiency**: All implementations handle 1B element arrays; Rust has more consistent decode times
-
+> **TODO**: Re-run benchmarks with single-core constraints per `openspec/changes/update-benchmarking-single-core/specs/benchmarking/spec.md`
+>
 > **Warning**: These benchmarks may be biased. See [A Warning on
 > Mechanical Sympathy](https://matthewrocklin.com/blog/work/2017/03/09/biased-benchmarks)
 > by Matthew Rocklin for important caveats when comparing performance across
 > implementations.
-
-For full methodology and running benchmarks, see [BENCHMARK_SETUP.md](./BENCHMARK_SETUP.md).
+>
+> For full methodology and running benchmarks, see [BENCHMARK_SETUP.md](./BENCHMARK_SETUP.md).
+>
+> **TODO**: Add allocation tracking and memory metrics to benchmark output per new spec.
 
 ## Features
 
@@ -63,6 +73,11 @@ For full methodology and running benchmarks, see [BENCHMARK_SETUP.md](./BENCHMAR
 - **Bit Information**: Information content from adjacent array entries
 - **Bit Pattern Entropy**: Entropy from unique bit patterns
 - **Statistical Functions**: Binomial confidence intervals, free entropy
+
+## Real-World Use Case: Climate Data Compression
+
+This project will include a complete workflow for compressing climate data, demonstrated in the `climate-bitround` CLI tool. This use case is specified in `openspec/changes/climate-data-bitround-usecase/`.
+
 
 ## Installation
 

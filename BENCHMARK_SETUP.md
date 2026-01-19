@@ -1,5 +1,13 @@
 # Bitround Benchmark Setup
 
+**TODO**: Update this document to reflect the new single-core benchmarking spec at `openspec/changes/update-benchmarking-single-core/specs/benchmarking/spec.md`. Key changes needed:
+- Add single-core execution requirements (thread pinning, CPU frequency scaling)
+- Add memory allocation tracking methodology (Julia GC disable, Rust allocator choice)
+- Add in-place vs copy operation fairness guidelines
+- Document environment setup commands for Linux systems
+
+See [RESEARCH.md](./openspec/changes/update-benchmarking-single-core/RESEARCH.md) for detailed benchmarking best practices.
+
 This document describes how to set up and run benchmarks for the bitround compression algorithm across Python, Julia, and Rust implementations.
 
 ## Benchmark Results
@@ -181,6 +189,25 @@ let data: Vec<f32> = (0..n_elements)
 
 ## Benchmark Methodology
 
+**TODO**: Update methodology to match `openspec/changes/update-benchmarking-single-core/specs/benchmarking/spec.md`:
+
+### Single-Core Requirements (TODO: Implement)
+- [ ] Pin benchmark process to single CPU core using `taskset -c 0` (Linux) or equivalent
+- [ ] Disable CPU turbo boost: `echo 1 > /sys/devices/system/cpu/intel_pstate/no_turbo`
+- [ ] Set CPU frequency governor to performance: `echo performance > /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor`
+- [ ] Disable hyper-threading for benchmark core if possible
+
+### Memory Allocation Fairness (TODO: Implement)
+- [ ] Julia: Disable GC during timing with `GC.disable()` or track GC time separately
+- [ ] Julia: Use `@allocated` to count allocations
+- [ ] Rust: Use jemalloc or mimalloc for fair comparison with Julia
+- [ ] Report allocation counts for each benchmark
+
+### In-Place Operations (TODO: Document)
+- [ ] Document whether encode/decode mutate input arrays
+- [ ] Benchmark both in-place and copy semantics separately if applicable
+- [ ] Ensure Rust and Julia implementations use equivalent semantics
+
 1. **Warmup**: Each implementation runs 3 warmup iterations (configurable) to stabilize CPU caches and JIT compilation
 2. **Measurement**: Timing measures only the bitround encode/decode function call, excluding:
    - Data generation time
@@ -264,8 +291,13 @@ The benchmarks automatically detect and report:
 
 When comparing results across machines:
 
-1. Normalize by clock speed if CPU frequencies differ
-2. Consider the impact of different memory bandwidth
-3. Note that Python/numcodecs may have different optimization levels
-4. Julia's single-threaded performance may differ from multi-threaded
-5. Rust's performance is typically the baseline for comparison
+1. **TODO**: Document single-core vs multi-core configuration used
+2. **TODO**: Report CPU frequency/turbo boost state
+3. **TODO**: Report memory allocator choice for each implementation
+4. Normalize by clock speed if CPU frequencies differ
+5. Consider the impact of different memory bandwidth
+6. Note that Python/numcodecs may have different optimization levels
+7. Julia's single-threaded performance may differ from multi-threaded
+8. Rust's performance is typically the baseline for comparison
+
+**Relevant Spec**: See `openspec/changes/update-benchmarking-single-core/specs/benchmarking/spec.md` for single-core benchmarking requirements.
