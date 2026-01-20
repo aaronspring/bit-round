@@ -162,17 +162,6 @@ let signed_exp = signed_exponent(value);
 
 ## Reference Implementation Status
 
-This implementation has been verified against two reference implementations:
-
-1. **numcodecs (Python)** - The canonical reference implementation for bitround encoding
-2. **BitInformation.jl (Julia)** - The original inspiration from the Nature paper
-
-### Important Note on Julia Reference
-
-During verification, we discovered a **sign handling bug** in the Julia `BitRound` reference implementation (`bitinformation.jl`). Negative numbers, -0.0, and infinities are incorrectly encoded (e.g., -1.0 becomes +1.0). See [POTENTIAL_BITINFORMATIONJL_BUG.md](./POTENTIAL_BITINFORMATIONJL_BUG.md) for full details, evidence, and root cause analysis.
-
-## Reference
-
 This implementation is based on the methodology from:
 
 > M Klöwer, M Razinger, JJ Dominguez, PD Düben and TN Palmer, 2021. *Compressing atmospheric data into its real information content*. **Nature Computational Science** 1, 713–724. [10.1038/s43588-021-00156-2](https://doi.org/10.1038/s43588-021-00156-2)
