@@ -1,12 +1,13 @@
 #!/usr/bin/env julia
 """
-Generate reference bitround outputs for Julia.
+Generate reference bitround outputs using BitInformation.jl.
 Reads input data from testdata/inputs/ and writes encoded outputs to testdata/julia/
 """
 
 using Random
 using Printf
 using Libdl
+using BitInformation
 
 TESTDATA_DIR = joinpath(dirname(@__FILE__), "..", "testdata")
 INPUTS_DIR = joinpath(TESTDATA_DIR, "inputs")
@@ -30,21 +31,11 @@ NBITS_F32 = [1, 8, 16, 23]
 NBITS_F64 = [1, 16, 32, 52]
 
 function bitround_ieee_encode(x::Float32, nbits::Int)
-    mantissa_bits = 23
-    if nbits >= mantissa_bits
+    keepbits = nbits
+    if keepbits >= 23
         return reinterpret(UInt32, x)
     end
-
-    shift = mantissa_bits - nbits
-    keepmask = UInt32(0x007fffff) << shift
-
-    ui = reinterpret(UInt32, x)
-    ulp_half = UInt32(1) << (shift - 1)
-    tie_bit = (ui >> shift) & UInt32(1)
-
-    ui_new = (ui + ulp_half + tie_bit) & keepmask
-
-    return ui_new
+    return reinterpret(UInt32, round(x, keepbits))
 end
 
 function bitround_array_f32(x::Vector{Float32}, nbits::Int)
@@ -52,21 +43,11 @@ function bitround_array_f32(x::Vector{Float32}, nbits::Int)
 end
 
 function bitround_ieee_encode(x::Float64, nbits::Int)
-    mantissa_bits = 52
-    if nbits >= mantissa_bits
+    keepbits = nbits
+    if keepbits >= 52
         return reinterpret(UInt64, x)
     end
-
-    shift = mantissa_bits - nbits
-    keepmask = UInt64(0x007fffffffffffff) << shift
-
-    ui = reinterpret(UInt64, x)
-    ulp_half = UInt64(1) << (shift - 1)
-    tie_bit = (ui >> shift) & UInt64(1)
-
-    ui_new = (ui + ulp_half + tie_bit) & keepmask
-
-    return ui_new
+    return reinterpret(UInt64, round(x, keepbits))
 end
 
 function bitround_array_f64(x::Vector{Float64}, nbits::Int)
@@ -126,7 +107,7 @@ function process_f64(input_file::String, nbits::Int)
 end
 
 function main()
-    println("=== Generating Julia Reference Data ===")
+    println("=== Generating Julia Reference Data (using BitInformation.jl) ===")
     println()
 
     mkpath(OUTPUT_DIR)

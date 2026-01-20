@@ -2,70 +2,35 @@
 """
 Benchmark bitround for 3D arrays with edge lengths 10^n where n=0 to 3.
 Tests encoding and decoding with random input data.
-Outputs copy-pasteable results in Python, Julia, Rust order.
+Uses BitInformation.jl for correct IEEE round-to-nearest-ties-to-even.
 """
 
 using Random
 using Printf
 using Statistics
 using JSON
-using Libdl
+using BitInformation
 
-function bitround_ieee(x::Float32, nbits::Int)
-    mantissa_bits = 23
-    if nbits >= mantissa_bits
-        return x
-    end
-
-    shift = mantissa_bits - nbits
-    keepmask = UInt32(0x007fffff) << shift
-
-    ui = reinterpret(UInt32, x)
-    ulp_half = UInt32(1) << (shift - 1)
-    tie_bit = (ui >> shift) & UInt32(1)
-
-    ui_new = (ui + ulp_half + tie_bit) & keepmask
-
-    return reinterpret(Float32, ui_new)
-end
-
-function bitround_array!(result::Vector{UInt32}, x::Vector{Float32}, nbits::Int)
-    mantissa_bits = 23
-    if nbits >= mantissa_bits
-        return result
-    end
-
-    shift = mantissa_bits - nbits
-    keepmask = UInt32(0x007fffff) << shift
-    ulp_half = UInt32(1) << (shift - 1)
-
+function bitround_array!(result::Vector{UInt32}, x::Vector{Float32}, keepbits::Int)
     @inbounds for i in eachindex(x)
-        ui = reinterpret(UInt32, x[i])
-        tie_bit = (ui >> shift) & UInt32(1)
-        ui_new = (ui + ulp_half + tie_bit) & keepmask
-        result[i] = ui_new
+        result[i] = reinterpret(UInt32, round(x[i], keepbits))
     end
     return result
 end
 
-function bitround_array(x::Vector{Float32}, nbits::Int)
-    return bitround_array!(Vector{UInt32}(undef, length(x)), x, nbits)
+function bitround_array(x::Vector{Float32}, keepbits::Int)
+    return bitround_array!(Vector{UInt32}(undef, length(x)), x, keepbits)
 end
 
-function decode_bitround_array(x::Vector{UInt32}, nbits::Int)
-    mantissa_bits = 23
-    maskbits = mantissa_bits - nbits
-    mask = if maskbits == 0
-        ~UInt32(0)
-    else
-        (~UInt32(0) >> maskbits) << maskbits
-    end
-
-    result = Vector{Float32}(undef, length(x))
-    for (i, ui) in enumerate(x)
-        result[i] = reinterpret(Float32, ui & mask)
+function decode_bitround_array!(result::Vector{Float32}, x::Vector{UInt32}, keepbits::Int)
+    @inbounds for i in eachindex(x)
+        result[i] = reinterpret(Float32, x[i])
     end
     return result
+end
+
+function decode_bitround_array(x::Vector{UInt32}, keepbits::Int)
+    return decode_bitround_array!(Vector{Float32}(undef, length(x)), x, keepbits)
 end
 
 function get_machine_specs()
@@ -92,14 +57,14 @@ function generate_random_3d_array(edge_size::Int, seed::Int=42)
     return 273.0f0 .+ rand(Float32, edge_size, edge_size, edge_size) .* 20.0f0
 end
 
-function time_encode_only(data::Array{Float32,3}, nbits::Int, n_iterations::Int)
+function time_encode_only(data::Array{Float32,3}, keepbits::Int, n_iterations::Int)
     data_flat = vec(data)
     times = Float64[]
     result = Vector{UInt32}(undef, length(data_flat))
 
     for _ in 1:n_iterations
         t = @elapsed begin
-            bitround_array!(result, data_flat, nbits)
+            bitround_array!(result, data_flat, keepbits)
         end
         push!(times, t * 1e6)
     end
@@ -113,13 +78,13 @@ function time_encode_only(data::Array{Float32,3}, nbits::Int, n_iterations::Int)
     )
 end
 
-function time_decode_only(encoded_data::Vector{UInt32}, nbits::Int, n_iterations::Int)
+function time_decode_only(encoded_data::Vector{UInt32}, keepbits::Int, n_iterations::Int)
     times = Float64[]
     result = Vector{Float32}(undef, length(encoded_data))
 
     for _ in 1:n_iterations
         t = @elapsed begin
-            decode_bitround_array!(result, encoded_data, nbits)
+            decode_bitround_array!(result, encoded_data, keepbits)
         end
         push!(times, t * 1e6)
     end
@@ -133,29 +98,14 @@ function time_decode_only(encoded_data::Vector{UInt32}, nbits::Int, n_iterations
     )
 end
 
-function decode_bitround_array!(result::Vector{Float32}, x::Vector{UInt32}, nbits::Int)
-    mantissa_bits = 23
-    maskbits = mantissa_bits - nbits
-    mask = if maskbits == 0
-        ~UInt32(0)
-    else
-        (~UInt32(0) >> maskbits) << maskbits
-    end
-
-    @inbounds for i in eachindex(x)
-        result[i] = reinterpret(Float32, x[i] & mask)
-    end
-    return result
-end
-
-function run_benchmarks(; nbits::Int=16, n_warmup::Int=3, n_iterations::Int=10)
+function run_benchmarks(; keepbits::Int=16, n_warmup::Int=3, n_iterations::Int=10)
     edge_sizes = [1, 10, 100, 1000]
     results = Dict{String, Any}(
         "julia" => Dict{String, Any}(),
         "machine_specs" => get_machine_specs()
     )
 
-    println(stderr, "Julia bitround benchmark")
+    println(stderr, "Julia bitround benchmark (using BitInformation.jl)")
     println(stderr, "=" ^ 60)
     println(stderr, "Machine: ", results["machine_specs"]["computer_family"])
     println(stderr, "CPU: ", results["machine_specs"]["cpu_model"])
@@ -163,7 +113,7 @@ function run_benchmarks(; nbits::Int=16, n_warmup::Int=3, n_iterations::Int=10)
     println(stderr, "RAM: ", results["machine_specs"]["ram_gb"])
     println(stderr, "OS: ", results["machine_specs"]["os"])
     println(stderr)
-    println(stderr, "nbits: ", nbits)
+    println(stderr, "keepbits: ", keepbits)
     println(stderr, "warmup iterations: ", n_warmup)
     println(stderr, "measured iterations: ", n_iterations)
     println(stderr)
@@ -178,13 +128,13 @@ function run_benchmarks(; nbits::Int=16, n_warmup::Int=3, n_iterations::Int=10)
         data = generate_random_3d_array(edge_size)
 
         for _ in 1:n_warmup
-            bitround_array(vec(data), nbits)
+            bitround_array(vec(data), keepbits)
         end
 
-        encode_stats = time_encode_only(data, nbits, n_iterations)
+        encode_stats = time_encode_only(data, keepbits, n_iterations)
 
-        encoded = bitround_array(vec(data), nbits)
-        decode_stats = time_decode_only(encoded, nbits, n_iterations)
+        encoded = bitround_array(vec(data), keepbits)
+        decode_stats = time_decode_only(encoded, keepbits, n_iterations)
 
         results["julia"][size_str] = Dict(
             "n_elements" => n_elements,
@@ -230,15 +180,15 @@ function format_markdown_report(results::Dict)
 end
 
 function main()
-    nbits = 16
+    keepbits = 16
     n_warmup = 3
     n_iterations = 10
     output_json = false
     output_markdown = false
 
     for i in 1:length(ARGS)
-        if ARGS[i] == "--nbits" && i < length(ARGS)
-            nbits = parse(Int, ARGS[i+1])
+        if ARGS[i] == "--keepbits" && i < length(ARGS)
+            keepbits = parse(Int, ARGS[i+1])
         elseif ARGS[i] == "--warmup" && i < length(ARGS)
             n_warmup = parse(Int, ARGS[i+1])
         elseif ARGS[i] == "--iterations" && i < length(ARGS)
@@ -250,7 +200,7 @@ function main()
         end
     end
 
-    results = run_benchmarks(nbits=nbits, n_warmup=n_warmup, n_iterations=n_iterations)
+    results = run_benchmarks(keepbits=keepbits, n_warmup=n_warmup, n_iterations=n_iterations)
 
     if output_json
         println(JSON.json(results, 2))
