@@ -11,6 +11,11 @@ oorandom = "11"
 fastrand = "2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+zarrs = "0.23.0-beta.6"
+zstd = "0.13"
+reqwest = { version = "0.13", features = ["blocking"] }
+tokio = { version = "1", features = ["full"] }
+clap = { version = "4.4", features = ["derive"] }
 
 [dev-dependencies]
 criterion = "0.5"
@@ -27,3 +32,11 @@ path = "src/bin/bench.rs"
 [[bin]]
 name = "generate_test_inputs"
 path = "src/bin/generate_test_inputs.rs"
+
+[[bin]]
+name = "climate-bitround"
+path = "src/bin/climate_bitround.rs"
+
+[[bin]]
+name = "climate-compression"
+path = "scripts/climate_compression.rs"

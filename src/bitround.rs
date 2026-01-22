@@ -108,13 +108,24 @@ fn get_shift<T: IEEEFloat>(keepbits: u32) -> i32 {
 /// Technically ulp/2 here is just smaller than ulp/2 which rounds down the ties. For
 /// a tie round up +1 is added in `round(T,keepbits)`.
 fn get_ulp_half<T: IEEEFloat>(keepbits: u32) -> u64 {
-    !to_unsigned_u64(!T::significand_mask() >> (keepbits + 1))
+    let significand_bits = T::significand_bits();
+    if keepbits >= significand_bits {
+        0
+    } else {
+        let remaining_bits = significand_bits - keepbits - 1;
+        ((1u64 << (keepbits + 1)) - 1) >> remaining_bits
+    }
 }
 
 /// Returns a mask that's 1 for all bits that are kept after rounding and 0 for the
 /// discarded trailing bits.
 fn get_keep_mask<T: IEEEFloat>(keepbits: u32) -> u64 {
-    to_unsigned_u64(!T::significand_mask() >> keepbits)
+    let significand_bits = T::significand_bits();
+    if keepbits >= significand_bits {
+        !T::significand_mask()
+    } else {
+        !((1 << (significand_bits - keepbits)) - 1)
+    }
 }
 
 /// Returns a mask that's `1` for a given `mantissabit` and `0` else. Mantissa bits
@@ -124,7 +135,7 @@ fn get_bit_mask<T: IEEEFloat>(mantissabit: i32) -> u64 {
     T::sign_mask() >> (T::exponent_bits() as i32 + mantissabit)
 }
 
-/// Helper function to convert signed to unsigned for bit operations
+#[allow(dead_code)]
 fn to_unsigned_u64(x: u64) -> u64 {
     x
 }

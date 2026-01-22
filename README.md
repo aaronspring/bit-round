@@ -76,7 +76,51 @@ Benchmarks measure encode/decode performance for 3D arrays (Float32) with edge l
 
 ## Real-World Use Case: Climate Data Compression
 
-This project will include a complete workflow for compressing climate data, demonstrated in the `climate-bitround` CLI tool. This use case is specified in `openspec/changes/climate-data-bitround-usecase/`.
+This project includes a complete workflow for compressing climate data, demonstrated in the `climate-bitround` CLI tool. The use case is specified in `openspec/changes/climate-data-bitround-usecase/`.
+
+### Data Source
+
+**NOAA-GFDL GFDL-ESM4 ssp585 r1i1p1f1 (zos - sea surface height)**
+
+- CMIP6 ScenarioMIP experiment
+- 1.6 GB dataset (2015-2100 monthly data)
+- Source: https://esgf-node.llnl.gov/search/cmip6/
+
+### Compression Analysis
+
+Run the analysis script:
+
+```bash
+cargo run --bin climate-compression
+```
+
+| Information | keepbits | Compressed Size | Ratio |
+|-------------|----------|-----------------|-------|
+| 99% | 22 | 563 MB | 2.9x |
+| 95% | 19 | 486 MB | 3.4x |
+| 90% | 16 | 410 MB | 4.0x |
+| 85% | 14 | 358 MB | 4.6x |
+| 80% | 12 | 307 MB | 5.3x |
+
+See `scripts/climate_compression.rs` for the analysis implementation.
+
+### Usage
+
+```bash
+# Calculate effective bits for data
+cargo run --bin climate-bitround -- keff -d 1.0 -d 2.0 -d 3.0 -s 0.99
+
+# Apply bitround compression
+cargo run --bin climate-bitround -- bitround -d 1.234 -n 20
+```
+
+### Workflow
+
+1. Download Zarr format climate data from ESGF
+2. Calculate `keff` (effective bits) using entropy-based analysis
+3. Apply bitround at calculated precision level
+4. Save with zstd compression
+5. Compare storage sizes before/after
 
 
 ## Installation
