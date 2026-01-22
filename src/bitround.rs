@@ -940,19 +940,19 @@ pub mod information {
 
         if p < p_low {
             let q = (-2.0 * p).sqrt();
-            let num = (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]);
-            let den = ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1.0);
+            let num = ((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5];
+            let den = (((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1.0;
             return (num / den).exp().ln();
         } else if p <= p_high {
             let q = p - 0.5;
             let r = q * q;
             let num = (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q;
-            let den = (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1.0);
+            let den = ((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1.0;
             return num / den;
         } else {
             let q = (-2.0 * (1.0 - p)).sqrt();
-            let num = (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]);
-            let den = ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1.0);
+            let num = ((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5];
+            let den = (((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1.0;
             return -(num / den).exp().ln();
         }
     }

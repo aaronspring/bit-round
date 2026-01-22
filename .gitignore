@@ -68,3 +68,6 @@ coverage/
 *.dylib
 *.o
 *.a
+
+venv
+testdata

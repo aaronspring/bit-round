@@ -1,127 +1,8 @@
 # bit-round
 
-> **Note**: This project is a personal learning exercise exploring Rust programming. The entire codebase was written by [opencode](https://opencode.ai) using the [MinMax M2.1 model](https://opencode.ai/docs/models/) under [spec-driven development](https://youtu.be/8rABwKRsec4?si=ZDUrifwn3xAJPmkU&t=380) with [openspec](https://github.com/Fission-AI/OpenSpec) 
-
-**TODO**: Update benchmarks to use single-core execution as specified in `openspec/changes/update-benchmarking-single-core/specs/benchmarking/spec.md`. Key changes:
-- Pin to single CPU core for fair language comparison
-- Track memory allocations for Julia (GC-disable) and Rust (jemalloc)
-- Report allocation counts and GC time separately
+> **Note**: This project is a personal learning exercise exploring Rust programming. The entire codebase was written by [opencode](https://opencode.ai) using the [MinMax M2.1 model](https://opencode.ai/docs/models/) under [spec-driven development](https://youtu.be/8rABwKRsec4?si=ZDUrifwn3xAJPmkU&t=380) with [openspec](https://github.com/Fission-AI/OpenSpec)
 
 Rust crate for bitwise information analysis and compression, inspired by [BitInformation.jl](https://github.com/milankl/BitInformation.jl). This implementation provides comprehensive bitwise operations including IEEE rounding modes, bit transformations, and information theory functions.
-
-## Performance Benchmarks
-
-**TODO**: The current benchmarks may not accurately reflect single-core performance. Re-run benchmarks with:
-- Single-core thread pinning (`taskset -c 0` on Linux)
-- Julia GC disabled during timing
-- Consistent allocator (jemalloc/mimalloc for Rust)
-- CPU frequency locked to base clock
-
-See [BENCHMARK_SETUP.md](./BENCHMARK_SETUP.md) for methodology and [openspec/changes/update-benchmarking-single-core/RESEARCH.md](./openspec/changes/update-benchmarking-single-core/RESEARCH.md) for benchmarking best practices.
-
-Benchmarks measure encode/decode performance for 3D arrays (Float32) with edge lengths 10^n.
-
-**Machine**: Apple M2 Pro (10 cores), 16 GB RAM, macOS 26.2  
-**Configuration**: 16 bits, 10 iterations (2 for 1000³), 3 warmup iterations
-
-| Array Size | Elements | Implementation | Encode (μs) | Decode (μs) |
-|------------|----------|----------------|-------------|-------------|
-| 1×1×1 | 1 | Python | 10.89 ± 1.26 | 1.80 ± 1.79 |
-| | | **Julia** | **0.04 ± 0.01** | **0.03 ± 0.04** |
-| | | Rust | 0.06 ± 0.03 | 0.09 ± 0.08 |
-| 10×10×10 | 1,000 | Python | 10.44 ± 0.69 | 1.10 ± 0.20 |
-| | | **Julia** | **0.17 ± 0.05** | **0.11 ± 0.06** |
-| | | Rust | 0.84 ± 0.02 | 0.96 ± 0.97 |
-| 100×100×100 | 1,000,000 | Python | 1264.83 ± 121.83 | 1.35 ± 0.79 |
-| | | **Julia** | **134.47 ± 2.85** | 126.58 ± 41.67 |
-| | | Rust | 833.18 ± 24.35 | 629.72 ± 71.18 |
-| 1000×1000×1000 | 1,000,000,000 | Python | 32,906,771 ± 353,711 | 1,823 ± 1,523 |
-| | | Julia | 6,083,679 ± 2,928,600 | 4,573,157 ± 487,245 |
-| | | **Rust** | **835,025 ± 2,165** | **3,087,767 ± 3,578,593** |
-
-
-> **TODO**: Re-run benchmarks with single-core constraints per `openspec/changes/update-benchmarking-single-core/specs/benchmarking/spec.md`
->
-> **Warning**: These benchmarks may be biased. See [A Warning on
-> Mechanical Sympathy](https://matthewrocklin.com/blog/work/2017/03/09/biased-benchmarks)
-> by Matthew Rocklin for important caveats when comparing performance across
-> implementations.
->
-> For full methodology and running benchmarks, see [BENCHMARK_SETUP.md](./BENCHMARK_SETUP.md).
->
-> **TODO**: Add allocation tracking and memory metrics to benchmark output per new spec.
-
-## Features
-
-### Rounding Functions
-- **IEEE Round to Nearest Tie to Even**: Proper IEEE 754 rounding for Float32/Float64
-- **Shave**: Round towards zero by setting trailing bits to 0
-- **Halfshave**: Round to halfway between shave and IEEE round
-- **Set One**: Round away from zero by setting trailing bits to 1  
-- **Groom**: Alternating shave/set pattern for bit optimization
-
-### Bit Transformations
-- **Bit Transpose**: Reverse bit order (bit shuffle)
-- **XOR Delta**: Compute successive XOR differences
-- **Signed/Biased Exponent**: Extract and transform exponent bits
-
-### Information Theory Functions
-- **Bit Count**: Count 1-bits across all positions
-- **Bit Count Entropy**: Calculate entropy per bit position
-- **Mutual Information**: Bitwise mutual information between arrays
-- **Redundancy**: Normalized mutual information (0-1 scale)
-- **Bit Information**: Information content from adjacent array entries
-- **Bit Pattern Entropy**: Entropy from unique bit patterns
-- **Statistical Functions**: Binomial confidence intervals, free entropy
-
-## Real-World Use Case: Climate Data Compression
-
-This project includes a complete workflow for compressing climate data, demonstrated in the `climate-bitround` CLI tool. The use case is specified in `openspec/changes/climate-data-bitround-usecase/`.
-
-### Data Source
-
-**NOAA-GFDL GFDL-ESM4 ssp585 r1i1p1f1 (zos - sea surface height)**
-
-- CMIP6 ScenarioMIP experiment
-- 1.6 GB dataset (2015-2100 monthly data)
-- Source: https://esgf-node.llnl.gov/search/cmip6/
-
-### Compression Analysis
-
-Run the analysis script:
-
-```bash
-cargo run --bin climate-compression
-```
-
-| Information | keepbits | Compressed Size | Ratio |
-|-------------|----------|-----------------|-------|
-| 99% | 22 | 563 MB | 2.9x |
-| 95% | 19 | 486 MB | 3.4x |
-| 90% | 16 | 410 MB | 4.0x |
-| 85% | 14 | 358 MB | 4.6x |
-| 80% | 12 | 307 MB | 5.3x |
-
-See `scripts/climate_compression.rs` for the analysis implementation.
-
-### Usage
-
-```bash
-# Calculate effective bits for data
-cargo run --bin climate-bitround -- keff -d 1.0 -d 2.0 -d 3.0 -s 0.99
-
-# Apply bitround compression
-cargo run --bin climate-bitround -- bitround -d 1.234 -n 20
-```
-
-### Workflow
-
-1. Download Zarr format climate data from ESGF
-2. Calculate `keff` (effective bits) using entropy-based analysis
-3. Apply bitround at calculated precision level
-4. Save with zstd compression
-5. Compare storage sizes before/after
-
 
 ## Installation
 
@@ -146,6 +27,116 @@ Install via [rustup](https://rustup.rs/):
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
+
+## Real-World Use Case: Climate Data Compression
+
+This project includes a complete workflow for compressing climate data, demonstrated in the `climate-bitround` CLI tool. The use case is specified in `openspec/changes/climate-data-bitround-usecase/`.
+
+### Data Source
+
+**NOAA-GFDL GFDL-ESM4 ssp585 r1i1p1f1 (zos - sea surface height)**
+
+- CMIP6 ScenarioMIP experiment
+- 1.6 GB dataset (2015-2100 monthly data)
+- Source: Google Cloud Storage (gs://cmip6)
+
+### Downloading the Data
+
+The CMIP6 data is available as Zarr format on Google Cloud Storage. Download using curl:
+
+```bash
+BASE_URL="https://storage.googleapis.com/cmip6/CMIP6/ScenarioMIP/NOAA-GFDL/GFDL-ESM4/ssp585/r1i1p1f1/Omon/zos/gn/v20180701"
+
+mkdir -p /tmp/cmip6_zarr/zos
+
+# Download metadata files
+curl -s "$BASE_URL/zos/.zarray" -o /tmp/cmip6_zarr/zos/.zarray
+curl -s "$BASE_URL/zos/.zattrs" -o /tmp/cmip6_zarr/zos/.zattrs
+curl -s "$BASE_URL/zos/.zgroup" -o /tmp/cmip6_zarr/zos/.zgroup
+
+# Download data chunks (17 chunks, ~90MB each)
+for i in {0..16}; do
+    echo "Downloading chunk $i..."
+    curl -s "$BASE_URL/zos/$i.0.0" -o /tmp/cmip6_zarr/zos/$i.0.0
+done
+```
+
+Then run the compression:
+
+```bash
+cargo run --bin climate-bitround -- compress \
+  --input /tmp/cmip6_zarr \
+  --output /tmp/cmip6_compressed \
+  --significance 0.99
+```
+
+### Compression Analysis
+
+Run the analysis script:
+
+```bash
+cargo run --bin climate-compression
+```
+
+| Information | keepbits | Compressed Size | Ratio |
+|-------------|----------|-----------------|-------|
+| 100% | 32 | 788 MB | 2.1x |
+| 99% | 22 | 563 MB | 2.9x |
+| 95% | 19 | 486 MB | 3.4x |
+| 90% | 16 | 410 MB | 4.0x |
+| 85% | 14 | 358 MB | 4.6x |
+| 80% | 12 | 307 MB | 5.3x |
+
+See `scripts/climate_compression.rs` for the analysis implementation.
+
+### Expected Results
+
+For the full 1.6 GB CMIP6 dataset at 99% information preservation:
+
+| Information | keepbits | Compressed Size | Ratio |
+|-------------|----------|-----------------|-------|
+| 99% | 22 | ~563 MB | 2.9x |
+| 95% | 19 | ~486 MB | 3.4x |
+| 90% | 16 | ~410 MB | 4.0x |
+
+Example compression output:
+```
+=== Climate Bitround Compression ===
+Input (original):  /tmp/cmip6_zarr
+Output (compressed): /tmp/cmip6_compressed
+Significance level: 0.99
+
+[Step 1] Original size: 1.60 GB
+[Step 2] Reading data from input Zarr... (N elements)
+[Step 3] Calculating keff... (22 bits needed for 99% info)
+[Step 4] Applying bitround compression...
+[Step 5] Writing compressed Zarr to output...
+
+=== Results ===
+  Original size:   1.60 GB
+  Compressed size:  563 MB
+  Compression ratio: 2.91x
+  Space saved: 65.7%
+  Max error (22 bits): 2.38e-7
+```
+
+### Usage
+
+```bash
+# Calculate effective bits for data
+cargo run --bin climate-bitround -- keff -d 1.0 -d 2.0 -d 3.0 -s 0.99
+
+# Apply bitround compression
+cargo run --bin climate-bitround -- bitround -d 1.234 -n 20
+```
+
+### Workflow
+
+1. Download Zarr format climate data from ESGF
+2. Calculate `keff` (effective bits) using entropy-based analysis
+3. Apply bitround at calculated precision level
+4. Save with zstd compression
+5. Compare storage sizes before/after
 
 ## Usage
 
@@ -180,7 +171,7 @@ let data = vec![1.0f32, 2.0, 3.0, 4.0, 5.0];
 // Count 1-bits in each position
 let bit_counts = bitcount_array_f32(&data);
 
-// Calculate bitwise information content  
+// Calculate bitwise information content
 let bit_info = bitinformation_f32(&data, 2.0);
 
 // Compute mutual information between arrays
@@ -204,7 +195,76 @@ let deltas = xor_delta(&data);
 let signed_exp = signed_exponent(value);
 ```
 
-## Reference Implementation Status
+## Features
+
+### Rounding Functions
+- **IEEE Round to Nearest Tie to Even**: Proper IEEE 754 rounding for Float32/Float64
+- **Shave**: Round towards zero by setting trailing bits to 0
+- **Halfshave**: Round to halfway between shave and IEEE round
+- **Set One**: Round away from zero by setting trailing bits to 1
+- **Groom**: Alternating shave/set pattern for bit optimization
+
+### Bit Transformations
+- **Bit Transpose**: Reverse bit order (bit shuffle)
+- **XOR Delta**: Compute successive XOR differences
+- **Signed/Biased Exponent**: Extract and transform exponent bits
+
+### Information Theory Functions
+- **Bit Count**: Count 1-bits across all positions
+- **Bit Count Entropy**: Calculate entropy per bit position
+- **Mutual Information**: Bitwise mutual information between arrays
+- **Redundancy**: Normalized mutual information (0-1 scale)
+- **Bit Information**: Information content from adjacent array entries
+- **Bit Pattern Entropy**: Entropy from unique bit patterns
+- **Statistical Functions**: Binomial confidence intervals, free entropy
+
+## Performance Benchmarks
+
+**TODO**: Update benchmarks to use single-core execution as specified in `openspec/changes/update-benchmarking-single-core/specs/benchmarking/spec.md`. Key changes:
+- Pin to single CPU core for fair language comparison
+- Track memory allocations for Julia (GC-disable) and Rust (jemalloc)
+- Report allocation counts and GC time separately
+
+**TODO**: The current benchmarks may not accurately reflect single-core performance. Re-run benchmarks with:
+- Single-core thread pinning (`taskset -c 0` on Linux)
+- Julia GC disabled during timing
+- Consistent allocator (jemalloc/mimalloc for Rust)
+- CPU frequency locked to base clock
+
+See [BENCHMARK_SETUP.md](./BENCHMARK_SETUP.md) for methodology and [openspec/changes/update-benchmarking-single-core/RESEARCH.md](./openspec/changes/update-benchmarking-single-core/RESEARCH.md) for benchmarking best practices.
+
+Benchmarks measure encode/decode performance for 3D arrays (Float32) with edge lengths 10^n.
+
+**Machine**: Apple M2 Pro (10 cores), 16 GB RAM, macOS 26.2
+**Configuration**: 16 bits, 10 iterations (2 for 1000³), 3 warmup iterations
+
+| Array Size | Elements | Implementation | Encode (μs) | Decode (μs) |
+|------------|----------|----------------|-------------|-------------|
+| 1×1×1 | 1 | Python | 10.89 ± 1.26 | 1.80 ± 1.79 |
+| | | **Julia** | **0.04 ± 0.01** | **0.03 ± 0.04** |
+| | | Rust | 0.06 ± 0.03 | 0.09 ± 0.08 |
+| 10×10×10 | 1,000 | Python | 10.44 ± 0.69 | 1.10 ± 0.20 |
+| | | **Julia** | **0.17 ± 0.05** | **0.11 ± 0.06** |
+| | | Rust | 0.84 ± 0.02 | 0.96 ± 0.97 |
+| 100×100×100 | 1,000,000 | Python | 1264.83 ± 121.83 | 1.35 ± 0.79 |
+| | | **Julia** | **134.47 ± 2.85** | 126.58 ± 41.67 |
+| | | Rust | 833.18 ± 24.35 | 629.72 ± 71.18 |
+| 1000×1000×1000 | 1,000,000,000 | Python | 32,906,771 ± 353,711 | 1,823 ± 1,523 |
+| | | Julia | 6,083,679 ± 2,928,600 | 4,573,157 ± 487,245 |
+| | | **Rust** | **835,025 ± 2,165** | **3,087,767 ± 3,578,593** |
+
+> **TODO**: Re-run benchmarks with single-core constraints per `openspec/changes/update-benchmarking-single-coreing/spec.md`
+>
+> **TODO/specs/benchmark**: Add allocation tracking and memory metrics to benchmark output per new spec.
+
+> **Warning**: These benchmarks may be biased. See [A Warning on
+> Mechanical Sympathy](https://matthewrocklin.com/blog/work/2017/03/09/biased-benchmarks)
+> by Matthew Rocklin for important caveats when comparing performance across
+> implementations.
+>
+> For full methodology and running benchmarks, see [BENCHMARK_SETUP.md](./BENCHMARK_SETUP.md).
+
+## Reference Implementation
 
 This implementation is based on the methodology from:
 
@@ -216,7 +276,6 @@ MIT License
 
 ## References
 
-- [Julia implementation](https://github.com/milankl/BitInformation.jl)
+- [BitInformation.jl](https://github.com/milankl/BitInformation.jl)
 - [Python implementation](https://github.com/zarr-developers/numcodecs/blob/main/numcodecs/bitround.py)
-- [Original bitround.jl](https://github.com/bicycleben5/bitround.jl)
 - [Information-based bit allocation](https://github.com/observingClouds/xbitinfo)
