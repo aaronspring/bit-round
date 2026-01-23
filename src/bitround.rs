@@ -122,7 +122,7 @@ fn get_ulp_half<T: IEEEFloat>(keepbits: u32) -> u64 {
 fn get_keep_mask<T: IEEEFloat>(keepbits: u32) -> u64 {
     let significand_bits = T::significand_bits();
     if keepbits >= significand_bits {
-        !T::significand_mask()
+        !0 // Keep all bits
     } else {
         !((1 << (significand_bits - keepbits)) - 1)
     }

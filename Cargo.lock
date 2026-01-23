@@ -172,6 +172,7 @@ dependencies = [
  "clap",
  "criterion",
  "fastrand",
+ "flate2",
  "oorandom",
  "rand 0.8.5",
  "reqwest",

@@ -80,55 +80,36 @@ cargo run --bin climate-compression
 
 | Information | keepbits | Compressed Size | Ratio |
 |-------------|----------|-----------------|-------|
-| 100% | 32 | 788 MB | 2.1x |
-| 99% | 22 | 563 MB | 2.9x |
-| 95% | 19 | 486 MB | 3.4x |
-| 90% | 16 | 410 MB | 4.0x |
-| 85% | 14 | 358 MB | 4.6x |
-| 80% | 12 | 307 MB | 5.3x |
+| 100% | 53 | 802.7 MB | 1.1x |
+| 99% | 53 | 802.7 MB | 1.1x |
+| 95% | 51 | 811.7 MB | 1.1x |
+| 90% | 48 | 816.6 MB | 1.1x |
+| 80% | 43 | 770.6 MB | 1.1x |
 
-See `scripts/climate_compression.rs` for the analysis implementation.
-
-### Expected Results
-
-For the full 1.6 GB CMIP6 dataset at 99% information preservation:
-
-| Information | keepbits | Compressed Size | Ratio |
-|-------------|----------|-----------------|-------|
-| 99% | 22 | ~563 MB | 2.9x |
-| 95% | 19 | ~486 MB | 3.4x |
-| 90% | 16 | ~410 MB | 4.0x |
+*Note: Results are for the 882 MB subset of GFDL-ESM4 zos data.*
 
 Example compression output:
 ```
 === Climate Bitround Compression ===
 Input (original):  /tmp/cmip6_zarr
-Output (compressed): /tmp/cmip6_compressed
-Significance level: 0.99
+Output (compressed): /tmp/cmip6_0.80
+Significance level: 0.8
+Codec: Zstd (level 9)
 
-[Step 1] Original size: 1.60 GB
-[Step 2] Reading data from input Zarr... (N elements)
-[Step 3] Calculating keff... (22 bits needed for 99% info)
+[Step 1] Original size: 882.16 MB
+[Step 2] Reading data from input Zarr... (115,626,437 elements)
+[Step 3] Calculating keff... (43 bits needed for 80% info)
 [Step 4] Applying bitround compression...
 [Step 5] Writing compressed Zarr to output...
 
 === Results ===
-  Original size:   1.60 GB
-  Compressed size:  563 MB
-  Compression ratio: 2.91x
-  Space saved: 65.7%
-  Max error (22 bits): 2.38e-7
+  Original size:   882.16 MB
+  Compressed size: 770.64 MB
+  Compression ratio: 1.14x
+  Space saved: 12.6%
+  Max error (43 bits): 1.14e-13
 ```
 
-### Usage
-
-```bash
-# Calculate effective bits for data
-cargo run --bin climate-bitround -- keff -d 1.0 -d 2.0 -d 3.0 -s 0.99
-
-# Apply bitround compression
-cargo run --bin climate-bitround -- bitround -d 1.234 -n 20
-```
 
 ### Workflow
 
