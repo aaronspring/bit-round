@@ -595,6 +595,7 @@ pub mod transformations {
 
 /// Information theory functions (matching Julia's BitInformation.jl)
 pub mod information {
+    #[allow(unused_imports)]
     use super::*;
 
     /// Counts the occurrences of the 1-bit in bit position i across all elements of A

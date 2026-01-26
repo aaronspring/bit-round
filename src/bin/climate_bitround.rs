@@ -1,22 +1,16 @@
 use bit_round::bitround::BitroundEncoder;
-use bit_round::keff::{KeffResult, calculate_keff_f64};
+use bit_round::keff::calculate_keff_f64;
 use bit_round::zarr::{format_size, get_directory_size};
-use clap::{Parser, Subcommand, ValueEnum};
-use std::io::Write;
+use std::path::Path;
+use clap::{Parser, Subcommand};
 use std::path::PathBuf;
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-enum OutputFormat {
-    Text,
-    Json,
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-enum CodecType {
-    Zstd,
-    Gzip,
-    None,
-}
+use std::sync::Arc;
+use zarrs::array::codec::ZstdCodec;
+use zarrs::array::data_type::{Float32DataType, Float64DataType};
+use zarrs::array::{Array, ArrayBuilder, ArrayBuilderFillValue, ArraySubset, DataType};
+use zarrs::array::data_type;
+use zarrs::filesystem::FilesystemStore;
+use zarrs::storage::ReadableWritableListableStorage;
 
 #[derive(Parser, Debug)]
 #[command(name = "climate-bitround")]
@@ -30,135 +24,166 @@ struct Args {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    Keff {
-        #[arg(short, long)]
-        data: Vec<f64>,
-        #[arg(short, long, default_value = "0.99")]
-        significance: f64,
-        #[arg(short, long, value_enum)]
-        format: Option<OutputFormat>,
-    },
-    Bitround {
-        #[arg(short, long)]
-        data: Vec<f64>,
-        #[arg(short, long)]
-        nbits: usize,
-    },
-    Compress {
-        #[arg(short, long)]
-        input: PathBuf,
-        #[arg(short, long)]
-        output: PathBuf,
-        #[arg(short, long, default_value = "0.99")]
-        significance: f64,
-        #[arg(short, long, value_enum, default_value = "zstd")]
-        codec: CodecType,
-        #[arg(short, long, default_value = "19")]
-        level: i32,
-        #[arg(short, long)]
-        nbits: Option<usize>,
-    },
+    /// Show info about a Zarr store
     Info {
-        #[arg(short, long)]
+        /// Path to the Zarr store
         path: PathBuf,
     },
+    /// Compress a Zarr store with bitround + zstd
+    Compress {
+        /// Input Zarr store path
+        #[arg(short, long)]
+        input: PathBuf,
+        /// Output Zarr store path
+        #[arg(short, long)]
+        output: PathBuf,
+        /// Significance level for keff calculation (0.0-1.0)
+        #[arg(short, long, default_value = "0.99")]
+        significance: f64,
+        /// Zstd compression level (1-22)
+        #[arg(short, long, default_value = "19")]
+        level: i32,
+        /// Override number of bits to preserve (skip keff calculation)
+        #[arg(short, long)]
+        nbits: Option<usize>,
+        /// Name of the array to compress (if store contains multiple arrays)
+        #[arg(short, long)]
+        array: Option<String>,
+    },
 }
 
-fn apply_codec(
-    data: &[f64],
-    codec: CodecType,
-    level: i32,
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let bytes: Vec<u8> = data
-        .iter()
-        .flat_map(|&v| v.to_le_bytes().to_vec())
-        .collect();
-
-    match codec {
-        CodecType::Zstd => {
-            let mut encoder = zstd::stream::Encoder::new(Vec::new(), level)?;
-            encoder.write_all(&bytes)?;
-            encoder.finish()
-        }
-        CodecType::Gzip => {
-            let mut encoder =
-                flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::new(level as u32));
-            encoder.write_all(&bytes)?;
-            encoder.finish()
-        }
-        CodecType::None => Ok(bytes),
-    }
-    .map_err(|e| e.into())
+fn is_float32(dtype: &DataType) -> bool {
+    dtype.is::<Float32DataType>()
 }
 
-fn print_keff_result(result: &KeffResult, format: OutputFormat) {
-    match format {
-        OutputFormat::Json => {
-            println!(
-                r#"{{"keff": {:.4}, "nbits_preserved": {}, "information_preserved": {:.4}}}"#,
-                result.keff, result.nbits_preserved, result.information_preserved
-            );
-        }
-        OutputFormat::Text => {
-            println!("Keff Analysis Result:");
-            println!("  Effective bits (keff): {:.4}", result.keff);
-            println!("  Bits to preserve: {}", result.nbits_preserved);
-            println!(
-                "  Information preserved: {:.2}%",
-                result.information_preserved * 100.0
-            );
-        }
+fn is_float64(dtype: &DataType) -> bool {
+    dtype.is::<Float64DataType>()
+}
+
+fn dtype_name(dtype: &DataType) -> &'static str {
+    if is_float32(dtype) {
+        "float32"
+    } else if is_float64(dtype) {
+        "float64"
+    } else {
+        "unknown"
     }
 }
 
-fn handle_keff(
-    data: &[f64],
-    significance: f64,
-    format: OutputFormat,
-) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Calculating keff...");
-    println!("Significance level: {}", significance);
+fn handle_info(path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    println!("Zarr store: {}", path.display());
 
-    let result = calculate_keff_f64(data, significance, 53)?;
+    if !path.exists() {
+        return Err("Path does not exist".into());
+    }
 
-    println!("\nArray size: {} elements", data.len());
-    print_keff_result(&result, format);
+    let size = get_directory_size(Path::new(path))?;
+    println!("Total size: {}", format_size(size));
+
+    let store = Arc::new(FilesystemStore::new(path)?);
+
+    println!("\nArrays:");
+    for entry in std::fs::read_dir(path)? {
+        let entry = entry?;
+        let entry_path = entry.path();
+        if entry_path.is_dir() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') {
+                continue;
+            }
+
+            let array_path = format!("/{}", name);
+            match Array::open(store.clone(), &array_path) {
+                Ok(array) => {
+                    let shape = array.shape();
+                    let dtype = array.data_type();
+                    let sub_size = get_directory_size(entry_path.as_path())?;
+                    println!(
+                        "  {}: shape={:?}, dtype={}, size={}",
+                        name,
+                        shape,
+                        dtype_name(dtype),
+                        format_size(sub_size)
+                    );
+                }
+                Err(_) => {
+                    let sub_size = get_directory_size(entry_path.as_path())?;
+                    println!("  {} (not a valid array): {}", name, format_size(sub_size));
+                }
+            }
+        }
+    }
+
+    if let Ok(root_array) = Array::open(store.clone(), "/") {
+        let shape = root_array.shape();
+        let dtype = root_array.data_type();
+        println!("\nRoot array: shape={:?}, dtype={}", shape, dtype_name(dtype));
+    }
 
     Ok(())
 }
 
-fn handle_bitround(data: &[f64], nbits: usize) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Applying bitround with {} bits...", nbits);
+fn find_array_path(store: &Arc<FilesystemStore>, path: &PathBuf, array_name: Option<&String>) -> Result<String, Box<dyn std::error::Error>> {
+    if let Some(name) = array_name {
+        return Ok(format!("/{}", name));
+    }
 
-    let encoder = BitroundEncoder::new_f64(nbits as u8)?;
-    let mut compressed = data.to_vec();
-    encoder.shave_f64_inplace(&mut compressed);
+    if Array::open(store.clone(), "/").is_ok() {
+        return Ok("/".to_string());
+    }
 
-    println!("  Original sample: {:?}", &data[..5.min(data.len())]);
-    println!(
-        "  Compressed sample: {:?}",
-        &compressed[..5.min(compressed.len())]
-    );
+    for entry in std::fs::read_dir(path)? {
+        let entry = entry?;
+        if entry.path().is_dir() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') {
+                continue;
+            }
+            let array_path = format!("/{}", name);
+            if Array::open(store.clone(), &array_path).is_ok() {
+                return Ok(array_path);
+            }
+        }
+    }
 
-    let max_error = 2.0_f64.powi(-(nbits as i32));
-    println!("  Max error: {:.2e}", max_error);
+    Err("No valid array found in Zarr store".into())
+}
 
-    Ok(())
+fn read_array_data(array: &Array<FilesystemStore>) -> Result<(Vec<f64>, Vec<u64>, bool), Box<dyn std::error::Error>> {
+    let shape = array.shape().to_vec();
+    let subset = ArraySubset::new_with_shape(shape.clone());
+    let dtype = array.data_type();
+    
+    let is_f32 = is_float32(dtype);
+    let is_f64 = is_float64(dtype);
+    
+    if !is_f32 && !is_f64 {
+        return Err(format!("Unsupported data type: {}. Only float32 and float64 are supported.", dtype_name(dtype)).into());
+    }
+
+    let data: Vec<f64> = if is_f32 {
+        let values: Vec<f32> = array.retrieve_array_subset(&subset)?;
+        values.into_iter().map(|v| v as f64).collect()
+    } else {
+        array.retrieve_array_subset(&subset)?
+    };
+
+    Ok((data, shape, is_f32))
 }
 
 fn handle_compress(
     input: &PathBuf,
     output: &PathBuf,
     significance: f64,
-    codec: CodecType,
     level: i32,
     nbits_override: Option<usize>,
+    array_name: Option<&String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Climate Bitround Compression ===");
-    println!("Input (original):  {}", input.display());
-    println!("Output (compressed): {}", output.display());
+    println!("Input:  {}", input.display());
+    println!("Output: {}", output.display());
     println!("Significance level: {}", significance);
-    println!("Codec: {:?} (level {})", codec, level);
+    println!("Zstd level: {}", level);
     if let Some(n) = nbits_override {
         println!("NBits override: {}", n);
     }
@@ -168,17 +193,29 @@ fn handle_compress(
         return Err("Input path does not exist".into());
     }
 
-    let original_size = get_directory_size(input)?;
+    let original_size = get_directory_size(input.as_path())?;
     println!("[Step 1] Original size: {}", format_size(original_size));
 
-    println!("\n[Step 2] Reading data from input Zarr...");
-    let data = read_zarr_data(input)?;
+    println!("\n[Step 2] Opening input Zarr store...");
+    let input_store = Arc::new(FilesystemStore::new(input)?);
+    let array_path = find_array_path(&input_store, input, array_name)?;
+    println!("  Found array at: {}", array_path);
+
+    let input_array = Array::open(input_store.clone(), &array_path)?;
+    let shape = input_array.shape().to_vec();
+    let dtype = input_array.data_type().clone();
+    let dtype_str = dtype_name(&dtype);
+    println!("  Shape: {:?}", shape);
+    println!("  Data type: {}", dtype_str);
+
+    println!("\n[Step 3] Reading array data...");
+    let (data, _, is_f32) = read_array_data(&input_array)?;
     println!("  Read {} elements", data.len());
 
     let nbits = if let Some(n) = nbits_override {
         n
     } else {
-        println!("\n[Step 3] Calculating keff...");
+        println!("\n[Step 4] Calculating keff...");
         let keff_result = calculate_keff_f64(&data, significance, 53)?;
         println!("  keff: {:.4}", keff_result.keff);
         println!("  Bits to preserve: {}", keff_result.nbits_preserved);
@@ -190,34 +227,83 @@ fn handle_compress(
     };
 
     println!(
-        "\n[Step 4] Applying bitround compression ({} bits)...",
+        "\n[Step 5] Applying bitround compression ({} bits)...",
         nbits
     );
-    let encoder = BitroundEncoder::new_f64(nbits as u8)?;
-    let mut compressed = data;
-    encoder.shave_f64_inplace(&mut compressed);
+    let mut compressed_data = data;
+    
+    if is_f32 {
+        let encoder = BitroundEncoder::new_f32(nbits as u8)?;
+        let mut f32_data: Vec<f32> = compressed_data.iter().map(|&v| v as f32).collect();
+        encoder.shave_f32_inplace(&mut f32_data);
+        compressed_data = f32_data.iter().map(|&v| v as f64).collect();
+    } else {
+        let encoder = BitroundEncoder::new_f64(nbits as u8)?;
+        encoder.shave_f64_inplace(&mut compressed_data);
+    }
     println!("  Applied bitround");
 
-    println!("\n[Step 5] Applying {:?} compression...", codec);
-    let compressed = apply_codec(&compressed, codec, level)?;
-    println!("  Compressed size: {} bytes", compressed.len());
-
     println!("\n[Step 6] Writing compressed Zarr to output...");
-    write_zarr_data(output, &compressed, nbits, codec)?;
+    
+    if output.exists() {
+        std::fs::remove_dir_all(output)?;
+    }
+    std::fs::create_dir_all(output)?;
 
-    let compressed_size = get_directory_size(output)?;
+    let output_store: ReadableWritableListableStorage = Arc::new(FilesystemStore::new(output)?);
+
+    zarrs::group::GroupBuilder::new()
+        .build(output_store.clone(), "/")?
+        .store_metadata()?;
+
+    let chunk_shape: Vec<u64> = shape.iter().map(|&s| s.min(64)).collect();
+    let zstd_codec = ZstdCodec::new(level, false);
+
+    let output_array = if is_f32 {
+        let fill_value: ArrayBuilderFillValue = f32::NAN.into();
+        ArrayBuilder::new(
+            shape.clone(),
+            chunk_shape,
+            data_type::float32(),
+            fill_value,
+        )
+        .bytes_to_bytes_codecs(vec![Arc::new(zstd_codec)])
+        .build(output_store.clone(), "/data")?
+    } else {
+        let fill_value: ArrayBuilderFillValue = f64::NAN.into();
+        ArrayBuilder::new(
+            shape.clone(),
+            chunk_shape,
+            data_type::float64(),
+            fill_value,
+        )
+        .bytes_to_bytes_codecs(vec![Arc::new(zstd_codec)])
+        .build(output_store.clone(), "/data")?
+    };
+
+    output_array.store_metadata()?;
+
+    let subset = ArraySubset::new_with_shape(shape.clone());
+    if is_f32 {
+        let f32_data: Vec<f32> = compressed_data.iter().map(|&v| v as f32).collect();
+        output_array.store_array_subset(&subset, &f32_data)?;
+    } else {
+        output_array.store_array_subset(&subset, &compressed_data)?;
+    }
+
+    let compressed_size = get_directory_size(output.as_path())?;
     let ratio = original_size as f64 / compressed_size as f64;
 
     println!("\n=== Results ===");
-    println!("  Original size:  {}", format_size(original_size));
-    println!("  Compressed size: {}", format_size(compressed_size));
+    println!("  Original size:    {}", format_size(original_size));
+    println!("  Compressed size:  {}", format_size(compressed_size));
     println!("  Compression ratio: {:.2}x", ratio);
     println!(
         "  Space saved: {:.1}%",
         (1.0 - compressed_size as f64 / original_size as f64) * 100.0
     );
     println!(
-        "  Max error ({} bits): {:.2e}",
+        "  Max relative error ({} bits): {:.2e}",
         nbits,
         2.0_f64.powi(-(nbits as i32))
     );
@@ -225,147 +311,23 @@ fn handle_compress(
     Ok(())
 }
 
-fn read_zarr_data(path: &PathBuf) -> Result<Vec<f64>, Box<dyn std::error::Error>> {
-    let mut data = Vec::new();
-
-    for entry in std::fs::read_dir(path)? {
-        let entry = entry?;
-        if entry.path().is_dir() {
-            let name = entry.file_name();
-            if name.to_string_lossy().starts_with('.') {
-                continue;
-            }
-
-            let zarr_path = entry.path();
-            for chunk in std::fs::read_dir(&zarr_path)? {
-                let chunk = chunk?;
-                if chunk.path().is_file() {
-                    let filename = chunk.file_name().to_string_lossy().to_string();
-                    if filename.contains('.') && !filename.starts_with('.') {
-                        let content = std::fs::read(&chunk.path())?;
-                        let chunk_data: Vec<f64> = content
-                            .chunks_exact(8)
-                            .map(|chunk| {
-                                let mut arr = [0u8; 8];
-                                arr.copy_from_slice(chunk);
-                                f64::from_le_bytes(arr)
-                            })
-                            .collect();
-                        data.extend(chunk_data);
-                    }
-                }
-            }
-        }
-    }
-
-    if data.is_empty() {
-        return Err("No data found in Zarr directory".into());
-    }
-
-    Ok(data)
-}
-
-fn write_zarr_data(
-    path: &PathBuf,
-    compressed_data: &[u8],
-    nbits: usize,
-    codec: CodecType,
-) -> Result<(), Box<dyn std::error::Error>> {
-    if path.exists() {
-        std::fs::remove_dir_all(path)?;
-    }
-    std::fs::create_dir_all(path)?;
-
-    let codec_info = match codec {
-        CodecType::Zstd => r#"{"type": "zstd", "level": 19}"#,
-        CodecType::Gzip => r#"{"type": "gzip", "level": 19}"#,
-        CodecType::None => r#"{"type": "none"}"#,
-    };
-
-    let original_size = compressed_data.len();
-
-    let metadata = format!(
-        r#"{{
-  "zarr_format": 3,
-  "node_type": "array",
-  "shape": [{}],
-  "data_type": "uint8",
-  "chunk_grid": {{
-    "type": "regular",
-    "chunk_shape": [{}]
-  }},
-  "codecs": [{}],
-  "fill_value": 0,
-  "bitround_nbits": {},
-  "bitround_info": "float64 data bitrounded to {} bits, then compressed"
-}}"#,
-        original_size, original_size, codec_info, nbits, nbits
-    );
-
-    std::fs::write(path.join(".zarray"), metadata)?;
-
-    let chunk_path = path.join("0");
-    std::fs::create_dir_all(&chunk_path)?;
-    std::fs::write(chunk_path.join("0.bin"), compressed_data)?;
-
-    Ok(())
-}
-
-fn handle_info(path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Zarr directory: {}", path.display());
-
-    if !path.exists() {
-        return Err("Path does not exist".into());
-    }
-
-    let size = get_directory_size(path)?;
-    println!("Size on disk: {}", format_size(size));
-
-    println!("\nSubdirectories (potential arrays):");
-    for entry in std::fs::read_dir(path)? {
-        let entry = entry?;
-        if entry.path().is_dir() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if !name.starts_with('.') {
-                let sub_size = get_directory_size(&entry.path())?;
-                println!("  {}: {}", name, format_size(sub_size));
-            }
-        }
-    }
-
-    Ok(())
-}
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() {
     let args = Args::parse();
 
-    match args.command {
-        Commands::Keff {
-            data,
-            significance,
-            format,
-        } => {
-            let fmt = format.unwrap_or(OutputFormat::Text);
-            handle_keff(&data, significance, fmt)?;
-        }
-        Commands::Bitround { data, nbits } => {
-            handle_bitround(&data, nbits)?;
-        }
+    let result = match args.command {
+        Commands::Info { path } => handle_info(&path),
         Commands::Compress {
             input,
             output,
             significance,
-            codec,
             level,
             nbits,
-        } => {
-            handle_compress(&input, &output, significance, codec, level, nbits)?;
-        }
-        Commands::Info { path } => {
-            handle_info(&path)?;
-        }
-    }
+            array,
+        } => handle_compress(&input, &output, significance, level, nbits, array.as_ref()),
+    };
 
-    Ok(())
+    if let Err(e) = result {
+        eprintln!("Error: {}", e);
+        std::process::exit(1);
+    }
 }

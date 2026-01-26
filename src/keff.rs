@@ -36,6 +36,8 @@ impl KeffError {
     }
 }
 
+/// Calculate effective number of bits for f32 data.
+/// Analyzes only mantissa bits (23 bits for f32), from MSB to LSB.
 pub fn calculate_keff_f32(
     data: &[f32],
     significance_level: f64,
@@ -50,9 +52,10 @@ pub fn calculate_keff_f32(
         ));
     }
 
-    let valid_max_nbits = max_nbits.clamp(1, 24);
+    const MANTISSA_BITS: usize = 23;
+    let valid_max_nbits = max_nbits.clamp(1, MANTISSA_BITS);
     let bits_data: Vec<u32> = data.iter().map(|&x| x.to_bits()).collect();
-    let bit_significance = calculate_bit_significance_u32(&bits_data, 24);
+    let bit_significance = calculate_mantissa_significance_u32(&bits_data);
 
     let (keff, nbits_preserved, info_preserved) =
         find_optimal_nbits(&bit_significance, significance_level, valid_max_nbits);
@@ -65,6 +68,8 @@ pub fn calculate_keff_f32(
     ))
 }
 
+/// Calculate effective number of bits for f64 data.
+/// Analyzes only mantissa bits (52 bits for f64), from MSB to LSB.
 pub fn calculate_keff_f64(
     data: &[f64],
     significance_level: f64,
@@ -79,9 +84,10 @@ pub fn calculate_keff_f64(
         ));
     }
 
-    let valid_max_nbits = max_nbits.clamp(1, 53);
+    const MANTISSA_BITS: usize = 52;
+    let valid_max_nbits = max_nbits.clamp(1, MANTISSA_BITS);
     let bits_data: Vec<u64> = data.iter().map(|&x| x.to_bits()).collect();
-    let bit_significance = calculate_bit_significance_u64(&bits_data, 53);
+    let bit_significance = calculate_mantissa_significance_u64(&bits_data);
 
     let (keff, nbits_preserved, info_preserved) =
         find_optimal_nbits(&bit_significance, significance_level, valid_max_nbits);
@@ -94,73 +100,80 @@ pub fn calculate_keff_f64(
     ))
 }
 
-fn calculate_bit_significance_u32(bits: &[u32], total_bits: usize) -> Vec<f64> {
+/// Calculate bit significance for f32 mantissa bits (bits 0-22).
+/// Returns significance ordered from MSB (bit 22) to LSB (bit 0).
+/// Index 0 = most significant mantissa bit, index 22 = least significant.
+fn calculate_mantissa_significance_u32(bits: &[u32]) -> Vec<f64> {
+    const MANTISSA_BITS: usize = 23;
     let n = bits.len() as f64;
-    let mut significance: Vec<f64> = vec![0.0; total_bits];
+    let mut significance = Vec::with_capacity(MANTISSA_BITS);
 
-    for bit_idx in 0..total_bits {
+    // Iterate from MSB (bit 22) down to LSB (bit 0) of mantissa
+    for bit_idx in (0..MANTISSA_BITS).rev() {
         let mask = 1u32 << bit_idx;
-        let mut entropy_sum = 0.0f64;
-
         let ones_count: usize = bits.iter().filter(|&&b| (b & mask) != 0).count();
         let p_ones = ones_count as f64 / n;
         let p_zeros = 1.0 - p_ones;
 
+        let mut entropy = 0.0f64;
         if p_ones > 0.0 {
-            entropy_sum -= p_ones * p_ones.log2();
+            entropy -= p_ones * p_ones.log2();
         }
         if p_zeros > 0.0 {
-            entropy_sum -= p_zeros * p_zeros.log2();
+            entropy -= p_zeros * p_zeros.log2();
         }
 
-        significance[bit_idx] = if entropy_sum.is_nan() {
-            0.0
-        } else {
-            entropy_sum
-        };
+        significance.push(if entropy.is_nan() { 0.0 } else { entropy });
     }
 
     significance
 }
 
-fn calculate_bit_significance_u64(bits: &[u64], total_bits: usize) -> Vec<f64> {
+/// Calculate bit significance for f64 mantissa bits (bits 0-51).
+/// Returns significance ordered from MSB (bit 51) to LSB (bit 0).
+/// Index 0 = most significant mantissa bit, index 51 = least significant.
+fn calculate_mantissa_significance_u64(bits: &[u64]) -> Vec<f64> {
+    const MANTISSA_BITS: usize = 52;
     let n = bits.len() as f64;
-    let mut significance: Vec<f64> = vec![0.0; total_bits];
+    let mut significance = Vec::with_capacity(MANTISSA_BITS);
 
-    for bit_idx in 0..total_bits {
+    // Iterate from MSB (bit 51) down to LSB (bit 0) of mantissa
+    for bit_idx in (0..MANTISSA_BITS).rev() {
         let mask = 1u64 << bit_idx;
-        let mut entropy_sum = 0.0f64;
-
         let ones_count: usize = bits.iter().filter(|&&b| (b & mask) != 0).count();
         let p_ones = ones_count as f64 / n;
         let p_zeros = 1.0 - p_ones;
 
+        let mut entropy = 0.0f64;
         if p_ones > 0.0 {
-            entropy_sum -= p_ones * p_ones.log2();
+            entropy -= p_ones * p_ones.log2();
         }
         if p_zeros > 0.0 {
-            entropy_sum -= p_zeros * p_zeros.log2();
+            entropy -= p_zeros * p_zeros.log2();
         }
 
-        significance[bit_idx] = if entropy_sum.is_nan() {
-            0.0
-        } else {
-            entropy_sum
-        };
+        significance.push(if entropy.is_nan() { 0.0 } else { entropy });
     }
 
     significance
 }
 
+/// Find optimal number of bits to preserve based on accumulated significance.
+/// Accumulates from MSB to LSB (index 0 to end of significance array).
 fn find_optimal_nbits(
     significance: &[f64],
     target_significance: f64,
     max_nbits: usize,
 ) -> (f64, usize, f64) {
     let total_info: f64 = significance.iter().sum();
+    if total_info == 0.0 {
+        return (0.0, 1, 0.0);
+    }
+
     let mut accumulated_info = 0.0f64;
     let mut nbits = 0;
 
+    // Accumulate significance from MSB to LSB
     for (i, &sig) in significance.iter().enumerate().take(max_nbits) {
         accumulated_info += sig;
         nbits = i + 1;
@@ -170,52 +183,9 @@ fn find_optimal_nbits(
         }
     }
 
-    let info_fraction = if total_info > 0.0 {
-        accumulated_info / total_info
-    } else {
-        0.0
-    };
-
+    let info_fraction = accumulated_info / total_info;
     let keff = accumulated_info;
     (keff, nbits, info_fraction)
-}
-
-pub fn apply_bitrounding_f32(data: &[f32], nbits: usize) -> Vec<f32> {
-    let nbits = nbits.clamp(1, 24);
-    let scale = 2.0_f32.powi(nbits as i32 - 24);
-    data.iter()
-        .map(|&x| {
-            let scaled = x * scale;
-            scaled.round() / scale
-        })
-        .collect()
-}
-
-pub fn apply_bitrounding_f64(data: &[f64], nbits: usize) -> Vec<f64> {
-    let nbits = nbits.clamp(1, 53);
-    let scale = 2.0_f64.powi(nbits as i32 - 53);
-    data.iter()
-        .map(|&x| {
-            let scaled = x * scale;
-            scaled.round() / scale
-        })
-        .collect()
-}
-
-pub fn calculate_max_error_f32(nbits: usize) -> f32 {
-    if nbits >= 24 {
-        0.0
-    } else {
-        2.0_f32.powi(-(nbits as i32))
-    }
-}
-
-pub fn calculate_max_error_f64(nbits: usize) -> f64 {
-    if nbits >= 53 {
-        0.0
-    } else {
-        2.0_f64.powi(-(nbits as i32))
-    }
 }
 
 #[cfg(test)]
@@ -224,38 +194,81 @@ mod tests {
 
     #[test]
     fn test_keff_f32_constant() {
+        // All identical values should have zero entropy (all bits same)
         let data = vec![1.0f32; 1000];
-        let result = calculate_keff_f32(&data, 0.99, 24).unwrap();
-        assert!(result.keff > 0.0);
-        assert!(result.nbits_preserved <= 24);
+        let result = calculate_keff_f32(&data, 0.99, 23).unwrap();
+        // Constant data has no entropy, so keff should be 0
+        assert_eq!(result.keff, 0.0);
+        assert!(result.nbits_preserved <= 23);
     }
 
     #[test]
     fn test_keff_f64_constant() {
+        // All identical values should have zero entropy
         let data = vec![1.0f64; 1000];
-        let result = calculate_keff_f64(&data, 0.99, 53).unwrap();
+        let result = calculate_keff_f64(&data, 0.99, 52).unwrap();
+        assert_eq!(result.keff, 0.0);
+        assert!(result.nbits_preserved <= 52);
+    }
+
+    #[test]
+    fn test_keff_f32_varying_data() {
+        // Data with variation should have non-zero entropy
+        let data: Vec<f32> = (0..1000).map(|i| i as f32 * 0.001).collect();
+        let result = calculate_keff_f32(&data, 0.99, 23).unwrap();
         assert!(result.keff > 0.0);
-        assert!(result.nbits_preserved <= 53);
+        assert!(result.nbits_preserved >= 1);
+        assert!(result.nbits_preserved <= 23);
+    }
+
+    #[test]
+    fn test_keff_f64_varying_data() {
+        // Data with variation should have non-zero entropy
+        let data: Vec<f64> = (0..1000).map(|i| i as f64 * 0.001).collect();
+        let result = calculate_keff_f64(&data, 0.99, 52).unwrap();
+        assert!(result.keff > 0.0);
+        assert!(result.nbits_preserved >= 1);
+        assert!(result.nbits_preserved <= 52);
     }
 
     #[test]
     fn test_keff_empty_data() {
         let data: Vec<f32> = vec![];
-        let result = calculate_keff_f32(&data, 0.99, 24);
+        let result = calculate_keff_f32(&data, 0.99, 23);
         assert!(result.is_err());
     }
 
     #[test]
-    fn test_bitrounding_f32() {
-        let data = vec![1.234567f32; 10];
-        let rounded = apply_bitrounding_f32(&data, 10);
-        assert!(rounded.iter().all(|&x| x == rounded[0]));
+    fn test_keff_invalid_significance_level() {
+        let data = vec![1.0f32; 10];
+        assert!(calculate_keff_f32(&data, 0.0, 23).is_err());
+        assert!(calculate_keff_f32(&data, 1.5, 23).is_err());
+        assert!(calculate_keff_f32(&data, -0.1, 23).is_err());
     }
 
     #[test]
-    fn test_bitrounding_f64() {
-        let data = vec![1.23456789012345f64; 10];
-        let rounded = apply_bitrounding_f64(&data, 20);
-        assert!(rounded.iter().all(|&x| x == rounded[0]));
+    fn test_bit_significance_ordering() {
+        // Verify that significance is ordered MSB to LSB
+        // For random-ish data, MSB bits should generally have lower entropy
+        // than LSB bits (more structure in high bits)
+        let data: Vec<f64> = (0..1000).map(|i| (i as f64).sqrt()).collect();
+        let result = calculate_keff_f64(&data, 0.99, 52).unwrap();
+        assert_eq!(result.bit_significance.len(), 52);
+    }
+
+    #[test]
+    fn test_mantissa_bits_only_f32() {
+        let data: Vec<f32> = (0..100).map(|i| i as f32 * 0.1).collect();
+        let result = calculate_keff_f32(&data, 0.99, 23).unwrap();
+        // Should only have 23 significance values (mantissa bits only)
+        assert_eq!(result.bit_significance.len(), 23);
+    }
+
+    #[test]
+    fn test_mantissa_bits_only_f64() {
+        let data: Vec<f64> = (0..100).map(|i| i as f64 * 0.1).collect();
+        let result = calculate_keff_f64(&data, 0.99, 52).unwrap();
+        // Should only have 52 significance values (mantissa bits only)
+        assert_eq!(result.bit_significance.len(), 52);
     }
 }

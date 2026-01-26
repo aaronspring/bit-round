@@ -64,51 +64,39 @@ done
 Then run the compression:
 
 ```bash
-cargo run --bin climate-bitround -- compress \
-  --input /tmp/cmip6_zarr \
-  --output /tmp/cmip6_compressed \
+cargo run --release --bin climate-bitround -- compress \
+  -i /tmp/cmip6_zarr \
+  -o /tmp/cmip6_compressed \
   --significance 0.99
 ```
 
-### Compression Analysis
-
-Run the analysis script:
+### CLI Commands
 
 ```bash
-cargo run --bin climate-compression
+# Show info about a Zarr store
+cargo run --bin climate-bitround -- info /tmp/cmip6_zarr
+
+# Compress with automatic keff calculation (99% information preserved)
+cargo run --bin climate-bitround -- compress -i /path/to/input -o /path/to/output
+
+# Compress with explicit number of bits
+cargo run --bin climate-bitround -- compress -i /path/to/input -o /path/to/output --nbits 16
 ```
 
-| Information | keepbits | Compressed Size | Ratio |
-|-------------|----------|-----------------|-------|
-| 100% | 53 | 802.7 MB | 1.1x |
-| 99% | 53 | 802.7 MB | 1.1x |
-| 95% | 51 | 811.7 MB | 1.1x |
-| 90% | 48 | 816.6 MB | 1.1x |
-| 80% | 43 | 770.6 MB | 1.1x |
+### Compression Results
 
-*Note: Results are for the 882 MB subset of GFDL-ESM4 zos data.*
+**Dataset**: GFDL-ESM4 zos (sea surface height), 1032×576×720 float32 array
 
-Example compression output:
-```
-=== Climate Bitround Compression ===
-Input (original):  /tmp/cmip6_zarr
-Output (compressed): /tmp/cmip6_0.80
-Significance level: 0.8
-Codec: Zstd (level 9)
+| Info | Bits | Compressed | vs 100% | Max Rel. Error |
+|------|------|------------|---------|----------------|
+| 100% | 23 | 933 MB | 1.00× | 1.2e-7 |
+| 99% | 23 | 933 MB | 1.00× | 1.2e-7 |
+| 95% | 22 | 921 MB | 1.01× | 2.4e-7 |
+| 90% | 21 | 902 MB | 1.03× | 4.8e-7 |
 
-[Step 1] Original size: 882.16 MB
-[Step 2] Reading data from input Zarr... (115,626,437 elements)
-[Step 3] Calculating keff... (43 bits needed for 80% info)
-[Step 4] Applying bitround compression...
-[Step 5] Writing compressed Zarr to output...
+*Note: This dataset has very high information content across all mantissa bits, resulting in minimal compression gains from keff-based bitrounding. Try with noisier datasets (e.g., temperature, precipitation) for more significant compression.*
 
-=== Results ===
-  Original size:   882.16 MB
-  Compressed size: 770.64 MB
-  Compression ratio: 1.14x
-  Space saved: 12.6%
-  Max error (43 bits): 1.14e-13
-```
+**Key insight**: Compression effectiveness depends on the data's inherent information structure. Sea surface height data is highly structured with information distributed across most bits.
 
 
 ### Workflow
@@ -259,4 +247,5 @@ MIT License
 
 - [BitInformation.jl](https://github.com/milankl/BitInformation.jl)
 - [Python implementation](https://github.com/zarr-developers/numcodecs/blob/main/numcodecs/bitround.py)
+- [Binary rounding implementation](https://github.com/dynamical-org/reformatters/blob/b92207bf3f585a27582214840ae9d2e416fcb2d4/src/reformatters/common/binary_rounding.py)
 - [Information-based bit allocation](https://github.com/observingClouds/xbitinfo)
