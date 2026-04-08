@@ -197,23 +197,32 @@ let data: Vec<f32> = (0..n_elements)
 - [ ] Set CPU frequency governor to performance: `echo performance > /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor`
 - [ ] Disable hyper-threading for benchmark core if possible
 
-### Memory Allocation Fairness (TODO: Implement)
-- [ ] Julia: Disable GC during timing with `GC.disable()` or track GC time separately
+### Memory Allocation Fairness
+- [x] Julia: GC disabled during timing with `GC.gc()` + `GC.enable(false)` to isolate compute performance
 - [ ] Julia: Use `@allocated` to count allocations
 - [ ] Rust: Use jemalloc or mimalloc for fair comparison with Julia
 - [ ] Report allocation counts for each benchmark
 
-### In-Place Operations (TODO: Document)
-- [ ] Document whether encode/decode mutate input arrays
-- [ ] Benchmark both in-place and copy semantics separately if applicable
-- [ ] Ensure Rust and Julia implementations use equivalent semantics
+### Allocation Semantics
+- [x] All implementations now use **allocating** encode/decode (output buffer allocated inside timing loop)
+- [x] Julia uses `bitround_array()` (allocating) instead of `bitround_array!()` (in-place) during benchmarks
+- [x] Python `codec.encode()` allocates output — consistent
+- [x] Rust `encode_f32()` allocates output `Vec` — consistent
+- [x] Rust `decode_f32()` no longer applies a redundant mask (encode already zeroes trailing bits)
+
+### Algorithm Differences (Known Limitation)
+- **Julia** uses `BitInformation.jl`'s `round(x, keepbits)` — IEEE round-to-nearest-ties-to-even
+- **Python** uses `numcodecs.BitRound` — numcodecs-style rounding (half-quantum + mask)
+- **Rust** uses `bitround_numcodecs32` — matches the numcodecs algorithm
+
+Julia's rounding algorithm differs from Python/Rust. This is a known limitation: the benchmark compares each ecosystem's canonical implementation rather than identical algorithms. The performance difference from the algorithm itself is minimal (both are O(1) per element bitwise operations), but results should be interpreted with this caveat.
+
+### Iteration Count
+- [x] All implementations now use the same iteration count for all array sizes (previously Python used only 2 iterations for 1000³)
 
 1. **Warmup**: Each implementation runs 3 warmup iterations (configurable) to stabilize CPU caches and JIT compilation
-2. **Measurement**: Timing measures only the bitround encode/decode function call, excluding:
-   - Data generation time
-   - Memory allocation/deallocation
-   - Data transfer time
-3. **Iterations**: Default 10 measured iterations (configurable)
+2. **Measurement**: Timing measures the full bitround encode/decode call **including output allocation**
+3. **Iterations**: Default 10 measured iterations (configurable), consistent across all sizes
 4. **Statistics**: Mean, standard deviation, min, max, and median times are recorded
 
 ## Output Format

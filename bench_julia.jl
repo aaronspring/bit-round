@@ -60,14 +60,18 @@ end
 function time_encode_only(data::Array{Float32,3}, keepbits::Int, n_iterations::Int)
     data_flat = vec(data)
     times = Float64[]
-    result = Vector{UInt32}(undef, length(data_flat))
 
+    # Disable GC during timing to isolate compute performance
+    GC.gc()  # collect before timing
+    GC.enable(false)
     for _ in 1:n_iterations
         t = @elapsed begin
-            bitround_array!(result, data_flat, keepbits)
+            # Use allocating version to match Python/Rust semantics (both allocate inside timing)
+            bitround_array(data_flat, keepbits)
         end
         push!(times, t * 1e6)
     end
+    GC.enable(true)
 
     return Dict(
         "mean_us" => mean(times),
@@ -80,14 +84,18 @@ end
 
 function time_decode_only(encoded_data::Vector{UInt32}, keepbits::Int, n_iterations::Int)
     times = Float64[]
-    result = Vector{Float32}(undef, length(encoded_data))
 
+    # Disable GC during timing to isolate compute performance
+    GC.gc()  # collect before timing
+    GC.enable(false)
     for _ in 1:n_iterations
         t = @elapsed begin
-            decode_bitround_array!(result, encoded_data, keepbits)
+            # Use allocating version to match Python/Rust semantics
+            decode_bitround_array(encoded_data, keepbits)
         end
         push!(times, t * 1e6)
     end
+    GC.enable(true)
 
     return Dict(
         "mean_us" => mean(times),

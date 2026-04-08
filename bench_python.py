@@ -152,11 +152,10 @@ def run_benchmarks(nbits=16, n_warmup=3, n_iterations=10):
         for _ in range(n_warmup):
             codec.encode(data.flatten())
 
-        n_iter = 2 if edge_size == 1000 else n_iterations
-        encode_stats = time_encode_only(data, codec, n_iter)
+        encode_stats = time_encode_only(data, codec, n_iterations)
 
         encoded = codec.encode(data.flatten())
-        decode_stats = time_decode_only(encoded, codec, n_iter)
+        decode_stats = time_decode_only(encoded, codec, n_iterations)
 
         results["python"][size_str] = {
             "n_elements": n_elements,

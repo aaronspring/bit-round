@@ -327,19 +327,12 @@ impl BitroundEncoder {
             )));
         }
 
-        let mantissa_bits = 23u32;
-        let maskbits = mantissa_bits.saturating_sub(self.nbits as u32);
-        let mask = if maskbits == 0 {
-            !0u32
-        } else {
-            ((!0u32) >> maskbits) << maskbits
-        };
-
+        // Trailing bits are already zeroed by encode, so decode is just a reinterpret
+        // (matching Julia's decode which is a plain reinterpret)
         let mut output = Vec::with_capacity(data.len());
 
         for &value in data {
-            let ui = value & mask;
-            output.push(f32::from_bits(ui));
+            output.push(f32::from_bits(value));
         }
 
         Ok(output)
@@ -394,19 +387,11 @@ impl BitroundEncoder {
             )));
         }
 
-        let mantissa_bits = 52u32;
-        let maskbits = mantissa_bits.saturating_sub(self.nbits as u32);
-        let mask = if maskbits == 0 {
-            !0u64
-        } else {
-            ((!0u64) >> maskbits) << maskbits
-        };
-
+        // Trailing bits are already zeroed by encode, so decode is just a reinterpret
         let mut output = Vec::with_capacity(data.len());
 
         for &value in data {
-            let ui = value & mask;
-            output.push(f64::from_bits(ui));
+            output.push(f64::from_bits(value));
         }
 
         Ok(output)

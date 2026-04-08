@@ -189,14 +189,15 @@ let signed_exp = signed_exponent(value);
 
 ## Performance Benchmarks
 
-**TODO**: Update benchmarks to use single-core execution as specified in `openspec/changes/update-benchmarking-single-core/specs/benchmarking/spec.md`. Key changes:
-- Pin to single CPU core for fair language comparison
-- Track memory allocations for Julia (GC-disable) and Rust (jemalloc)
-- Report allocation counts and GC time separately
+**Fairness fixes applied**:
+- Julia benchmark now uses allocating semantics (matching Python/Rust) instead of pre-allocated in-place buffers
+- Julia GC disabled during timed iterations to isolate compute performance
+- Python iteration count is now consistent across all array sizes (was reduced to 2 for 1000³)
+- Rust decode no longer applies a redundant mask (encode already zeroes trailing bits)
+- Algorithm difference documented: Julia uses IEEE round-to-nearest (BitInformation.jl), Python/Rust use numcodecs-style rounding
 
-**TODO**: The current benchmarks may not accurately reflect single-core performance. Re-run benchmarks with:
-- Single-core thread pinning (`taskset -c 0` on Linux)
-- Julia GC disabled during timing
+**TODO**: Further improvements for single-core execution as specified in `openspec/changes/update-benchmarking-single-core/specs/benchmarking/spec.md`:
+- Pin to single CPU core for fair language comparison
 - Consistent allocator (jemalloc/mimalloc for Rust)
 - CPU frequency locked to base clock
 
@@ -222,12 +223,14 @@ Benchmarks measure encode/decode performance for 3D arrays (Float32) with edge l
 | | | Julia | 6,083,679 ± 2,928,600 | 4,573,157 ± 487,245 |
 | | | **Rust** | **835,025 ± 2,165** | **3,087,767 ± 3,578,593** |
 
-> **TODO**: Re-run benchmarks with single-core constraints per `openspec/changes/update-benchmarking-single-coreing/spec.md`
+> **Note**: These benchmark results predate the fairness fixes above and should be re-run.
+> Julia times in particular are expected to increase now that allocation is included in timing.
 >
-> **TODO/specs/benchmark**: Add allocation tracking and memory metrics to benchmark output per new spec.
+> **Algorithm caveat**: Julia uses `BitInformation.jl` (IEEE round-to-nearest-ties-to-even),
+> while Python and Rust use numcodecs-style rounding. The benchmark compares each ecosystem's
+> canonical implementation rather than identical algorithms.
 
-> **Warning**: These benchmarks may be biased. See [A Warning on
-> Mechanical Sympathy](https://matthewrocklin.com/blog/work/2017/03/09/biased-benchmarks)
+> **Warning**: See [A Warning on Mechanical Sympathy](https://matthewrocklin.com/blog/work/2017/03/09/biased-benchmarks)
 > by Matthew Rocklin for important caveats when comparing performance across
 > implementations.
 >
