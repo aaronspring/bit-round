@@ -188,6 +188,218 @@ fn find_optimal_nbits(
     (keff, nbits, info_fraction)
 }
 
+/// Binary entropy in bits (p in [0,1]).
+fn binary_entropy(p: f64) -> f64 {
+    if p <= 0.0 || p >= 1.0 {
+        return 0.0;
+    }
+    let q = 1.0 - p;
+    -p * p.log2() - q * q.log2()
+}
+
+/// Normal quantile approximation (Beasley-Springer-Moro).
+fn normal_quantile(p: f64) -> f64 {
+    let a = [
+        -3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
+        1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00,
+    ];
+    let b = [
+        -5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02,
+        6.680131188771972e+01, -1.328068155288572e+01,
+    ];
+    let c = [
+        -7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00,
+        -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00,
+    ];
+    let d = [
+        7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00,
+        3.754408661907416e+00,
+    ];
+    let p_low = 0.02425;
+    let p_high = 1.0 - p_low;
+    if p < p_low {
+        let q = (-2.0 * p.ln()).sqrt();
+        (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5])
+            / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1.0)
+    } else if p <= p_high {
+        let q = p - 0.5;
+        let r = q * q;
+        (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q
+            / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1.0)
+    } else {
+        let q = (-2.0 * (1.0 - p).ln()).sqrt();
+        -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5])
+            / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1.0)
+    }
+}
+
+/// Binomial confidence interval upper bound for p=0.5 (normal approximation).
+/// Matches BitInformation.jl `binom_confidence`.
+fn binom_confidence(n: usize, confidence: f64) -> f64 {
+    let z = normal_quantile(1.0 - (1.0 - confidence) / 2.0);
+    (0.5 + z / (2.0 * (n as f64).sqrt())).min(1.0)
+}
+
+/// Mutual-information noise floor (free entropy) for n independent Bernoulli(0.5) trials.
+/// Matches BitInformation.jl `binom_free_entropy`.
+fn binom_free_entropy(n: usize, confidence: f64) -> f64 {
+    let p = binom_confidence(n, confidence);
+    1.0 - binary_entropy(p)
+}
+
+/// Compute bitwise mutual information between adjacent array entries for f32.
+/// Returns 32 values ordered MSB (index 0 = sign bit) to LSB (index 31).
+fn bitinformation_adjacent_f32(data: &[f32]) -> Vec<f64> {
+    if data.len() < 2 {
+        return vec![0.0; 32];
+    }
+    let n = data.len() - 1;
+    let bits: Vec<u32> = data.iter().map(|x| x.to_bits()).collect();
+    (0..32)
+        .map(|i| {
+            let pos = 31 - i;
+            let mask = 1u32 << pos;
+            let (mut c00, mut c01, mut c10, mut c11) = (0usize, 0usize, 0usize, 0usize);
+            for j in 0..n {
+                let a = (bits[j] & mask) != 0;
+                let b = (bits[j + 1] & mask) != 0;
+                match (a, b) {
+                    (false, false) => c00 += 1,
+                    (false, true) => c01 += 1,
+                    (true, false) => c10 += 1,
+                    (true, true) => c11 += 1,
+                }
+            }
+            mi_from_counts(c00, c01, c10, c11, n)
+        })
+        .collect()
+}
+
+/// Same as `bitinformation_adjacent_f32` but for f64 (64 values).
+fn bitinformation_adjacent_f64(data: &[f64]) -> Vec<f64> {
+    if data.len() < 2 {
+        return vec![0.0; 64];
+    }
+    let n = data.len() - 1;
+    let bits: Vec<u64> = data.iter().map(|x| x.to_bits()).collect();
+    (0..64)
+        .map(|i| {
+            let pos = 63 - i;
+            let mask = 1u64 << pos;
+            let (mut c00, mut c01, mut c10, mut c11) = (0usize, 0usize, 0usize, 0usize);
+            for j in 0..n {
+                let a = (bits[j] & mask) != 0;
+                let b = (bits[j + 1] & mask) != 0;
+                match (a, b) {
+                    (false, false) => c00 += 1,
+                    (false, true) => c01 += 1,
+                    (true, false) => c10 += 1,
+                    (true, true) => c11 += 1,
+                }
+            }
+            mi_from_counts(c00, c01, c10, c11, n)
+        })
+        .collect()
+}
+
+fn mi_from_counts(c00: usize, c01: usize, c10: usize, c11: usize, n: usize) -> f64 {
+    let n = n as f64;
+    let p00 = c00 as f64 / n;
+    let p01 = c01 as f64 / n;
+    let p10 = c10 as f64 / n;
+    let p11 = c11 as f64 / n;
+    let pa0 = p00 + p01;
+    let pa1 = p10 + p11;
+    let pb0 = p00 + p10;
+    let pb1 = p01 + p11;
+    let mut mi = 0.0f64;
+    for (p, pa, pb) in [
+        (p00, pa0, pb0),
+        (p01, pa0, pb1),
+        (p10, pa1, pb0),
+        (p11, pa1, pb1),
+    ] {
+        if p > 0.0 && pa > 0.0 && pb > 0.0 {
+            mi += p * (p / (pa * pb)).log2();
+        }
+    }
+    if mi < 0.0 { 0.0 } else { mi }
+}
+
+/// Determine keepbits (mantissa bits) for f32 data at a target information level.
+/// Implements the BitInformation.jl algorithm:
+///   1. mutual information between adjacent array entries, per bit position
+///   2. zero out bits below the binomial free-entropy noise floor (confidence 0.99)
+///   3. return smallest mantissa keepbits whose cumulative info ≥ inflevel * total
+pub fn get_keepbits_f32(data: &[f32], inflevel: f64) -> Result<usize, KeffError> {
+    if data.len() < 2 {
+        return Err(KeffError::new(
+            "Need at least 2 values for bitinformation".to_string(),
+        ));
+    }
+    if inflevel <= 0.0 || inflevel > 1.0 {
+        return Err(KeffError::new(
+            "inflevel must be in (0, 1]".to_string(),
+        ));
+    }
+    let mut info = bitinformation_adjacent_f32(data);
+    let floor = binom_free_entropy(data.len() - 1, 0.99);
+    for h in info.iter_mut() {
+        if *h <= floor {
+            *h = 0.0;
+        }
+    }
+    // f32 layout: bit 0 = sign (MSB), bits 1..=8 = exponent, bits 9..=31 = mantissa.
+    let mantissa = &info[9..32];
+    let total: f64 = mantissa.iter().sum();
+    if total == 0.0 {
+        return Ok(1);
+    }
+    let mut acc = 0.0f64;
+    for (i, &h) in mantissa.iter().enumerate() {
+        acc += h;
+        if acc / total >= inflevel {
+            return Ok(i + 1);
+        }
+    }
+    Ok(23)
+}
+
+/// Determine keepbits (mantissa bits) for f64 data at a target information level.
+pub fn get_keepbits_f64(data: &[f64], inflevel: f64) -> Result<usize, KeffError> {
+    if data.len() < 2 {
+        return Err(KeffError::new(
+            "Need at least 2 values for bitinformation".to_string(),
+        ));
+    }
+    if inflevel <= 0.0 || inflevel > 1.0 {
+        return Err(KeffError::new(
+            "inflevel must be in (0, 1]".to_string(),
+        ));
+    }
+    let mut info = bitinformation_adjacent_f64(data);
+    let floor = binom_free_entropy(data.len() - 1, 0.99);
+    for h in info.iter_mut() {
+        if *h <= floor {
+            *h = 0.0;
+        }
+    }
+    // f64 layout: bit 0 = sign, bits 1..=11 = exponent, bits 12..=63 = mantissa (52 bits).
+    let mantissa = &info[12..64];
+    let total: f64 = mantissa.iter().sum();
+    if total == 0.0 {
+        return Ok(1);
+    }
+    let mut acc = 0.0f64;
+    for (i, &h) in mantissa.iter().enumerate() {
+        acc += h;
+        if acc / total >= inflevel {
+            return Ok(i + 1);
+        }
+    }
+    Ok(52)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -270,5 +482,66 @@ mod tests {
         let result = calculate_keff_f64(&data, 0.99, 52).unwrap();
         // Should only have 52 significance values (mantissa bits only)
         assert_eq!(result.bit_significance.len(), 52);
+    }
+
+    #[test]
+    fn test_get_keepbits_f32_pure_noise_returns_one() {
+        // Uncorrelated bits between neighbors → MI ≈ 0 → all below noise floor → 1 bit fallback.
+        let n = 4096;
+        let mut state: u64 = 0x12345;
+        let data: Vec<f32> = (0..n)
+            .map(|_| {
+                state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                let u = ((state >> 33) as u32) & 0x007F_FFFF;
+                f32::from_bits(0x3F80_0000 | u)
+            })
+            .collect();
+        let kb = get_keepbits_f32(&data, 0.99).unwrap();
+        assert_eq!(kb, 1);
+    }
+
+    #[test]
+    fn test_get_keepbits_f32_smooth_signal_keeps_many() {
+        // Smooth sinusoid: high mantissa bits carry real info between neighbors.
+        let n = 4096;
+        let data: Vec<f32> = (0..n)
+            .map(|i| (i as f32 * 0.01).sin() * 10.0 + 100.0)
+            .collect();
+        let kb_99 = get_keepbits_f32(&data, 0.99).unwrap();
+        let kb_90 = get_keepbits_f32(&data, 0.90).unwrap();
+        assert!(kb_99 >= 5, "smooth data should keep many bits, got {}", kb_99);
+        assert!(kb_90 <= kb_99);
+    }
+
+    #[test]
+    fn test_get_keepbits_f64_smooth_signal() {
+        let n = 4096;
+        let data: Vec<f64> = (0..n)
+            .map(|i| (i as f64 * 0.01).sin() * 10.0 + 100.0)
+            .collect();
+        let kb = get_keepbits_f64(&data, 0.99).unwrap();
+        assert!(kb >= 5);
+        assert!(kb <= 52);
+    }
+
+    #[test]
+    fn test_get_keepbits_monotone_in_inflevel() {
+        let n = 4096;
+        let data: Vec<f32> = (0..n)
+            .map(|i| (i as f32 * 0.003).sin() * 5.0 + 20.0)
+            .collect();
+        let kb50 = get_keepbits_f32(&data, 0.50).unwrap();
+        let kb95 = get_keepbits_f32(&data, 0.95).unwrap();
+        let kb99 = get_keepbits_f32(&data, 0.99).unwrap();
+        assert!(kb50 <= kb95);
+        assert!(kb95 <= kb99);
+    }
+
+    #[test]
+    fn test_get_keepbits_invalid_inputs() {
+        let data = vec![1.0f32; 10];
+        assert!(get_keepbits_f32(&data, 0.0).is_err());
+        assert!(get_keepbits_f32(&data, 1.5).is_err());
+        assert!(get_keepbits_f32(&[1.0f32], 0.99).is_err());
     }
 }

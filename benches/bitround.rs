@@ -1,43 +1,45 @@
+//! Criterion microbench mirroring bench_python.py / bench_julia.jl 3D sizes.
+//! For cross-language timing comparison, use `cargo run --release --bin bench`.
+
 use bit_round::bitround::BitroundEncoder;
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 
-fn encode_f32(c: &mut Criterion) {
-    let data: Vec<f32> = (0..10000).map(|_| rand::random::<f32>()).collect();
-    let encoder = BitroundEncoder::new(16).unwrap();
+const EDGES: [usize; 3] = [10, 100, 1000];
+const KEEPBITS: u8 = 16;
+const SEED: u64 = 42;
 
-    c.bench_function("encode_f32_10k", |b| {
-        b.iter(|| encoder.encode_f32(black_box(&data)))
-    });
+fn temperature_3d(edge: usize, seed: u64) -> Vec<f32> {
+    let mut rng = fastrand::Rng::with_seed(seed);
+    let n = edge * edge * edge;
+    (0..n).map(|_| 273.0 + rng.f32() * 20.0).collect()
 }
 
-fn decode_f32(c: &mut Criterion) {
-    let data: Vec<f32> = (0..10000).map(|_| rand::random::<f32>()).collect();
-    let encoder = BitroundEncoder::new(16).unwrap();
-    let encoded = encoder.encode_f32(&data).unwrap();
-
-    c.bench_function("decode_f32_10k", |b| {
-        b.iter(|| encoder.decode_f32(black_box(&encoded)))
-    });
+fn bench_encode(c: &mut Criterion) {
+    let encoder = BitroundEncoder::new(KEEPBITS).unwrap();
+    let mut group = c.benchmark_group("encode_f32");
+    for &edge in &EDGES {
+        let data = temperature_3d(edge, SEED);
+        group.throughput(Throughput::Elements(data.len() as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(edge), &data, |b, d| {
+            b.iter(|| encoder.encode_f32(black_box(d)).unwrap());
+        });
+    }
+    group.finish();
 }
 
-fn encode_f64(c: &mut Criterion) {
-    let data: Vec<f64> = (0..10000).map(|_| rand::random::<f64>()).collect();
-    let encoder = BitroundEncoder::new(32).unwrap();
-
-    c.bench_function("encode_f64_10k", |b| {
-        b.iter(|| encoder.encode_f64(black_box(&data)))
-    });
+fn bench_decode(c: &mut Criterion) {
+    let encoder = BitroundEncoder::new(KEEPBITS).unwrap();
+    let mut group = c.benchmark_group("decode_f32");
+    for &edge in &EDGES {
+        let data = temperature_3d(edge, SEED);
+        let encoded = encoder.encode_f32(&data).unwrap();
+        group.throughput(Throughput::Elements(data.len() as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(edge), &encoded, |b, e| {
+            b.iter(|| encoder.decode_f32(black_box(e)).unwrap());
+        });
+    }
+    group.finish();
 }
 
-fn decode_f64(c: &mut Criterion) {
-    let data: Vec<f64> = (0..10000).map(|_| rand::random::<f64>()).collect();
-    let encoder = BitroundEncoder::new(32).unwrap();
-    let encoded = encoder.encode_f64(&data).unwrap();
-
-    c.bench_function("decode_f64_10k", |b| {
-        b.iter(|| encoder.decode_f64(black_box(&encoded)))
-    });
-}
-
-criterion_group!(benches, encode_f32, decode_f32, encode_f64, decode_f64);
+criterion_group!(benches, bench_encode, bench_decode);
 criterion_main!(benches);

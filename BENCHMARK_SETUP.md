@@ -1,14 +1,31 @@
 # Bitround Benchmark Setup
 
-**TODO**: Update this document to reflect the new single-core benchmarking spec at `openspec/changes/update-benchmarking-single-core/specs/benchmarking/spec.md`. Key changes needed:
-- Add single-core execution requirements (thread pinning, CPU frequency scaling)
-- Add memory allocation tracking methodology (Julia GC disable, Rust allocator choice)
-- Add in-place vs copy operation fairness guidelines
-- Document environment setup commands for Linux systems
+This document describes how to set up and run benchmarks for the bitround
+compression algorithm across Python, Julia, and Rust implementations.
 
-See [RESEARCH.md](./openspec/changes/update-benchmarking-single-core/RESEARCH.md) for detailed benchmarking best practices.
+There are now **three** benchmark harnesses in the repo:
 
-This document describes how to set up and run benchmarks for the bitround compression algorithm across Python, Julia, and Rust implementations.
+1. `bench_python.py` / `bench_julia.jl` / `cargo run --release --bin bench` —
+   in-process timing on matched 3D array sizes (10³, 100³, 1000³). Each is
+   self-contained and prints a markdown table.
+2. `cargo bench` (Criterion, `benches/bitround.rs`) — Rust-only microbench
+   over the same 3D sizes (excludes 1³ and 1000³ to keep runtime sane).
+3. `scripts/bench_memory.py` — cross-implementation **time + peak RSS**
+   harness. Spawns each implementation as a fresh subprocess under
+   `/usr/bin/time -l` (macOS) or `-v` (GNU), reports encode-only time plus
+   wall time and peak resident set size. See README.md for the latest
+   results.
+
+Cross-implementation **bitwise equivalence** is checked separately by
+`scripts/verify_equivalence.py`: it generates one reference array and asserts
+that numcodecs.BitRound, this crate, and BitInformation.jl all produce the
+same `u32` bytes.
+
+**TODO** (still open): Single-core pinning, CPU frequency lock, Julia
+GC-disable during timing, and a consistent Rust allocator (jemalloc/mimalloc).
+See [openspec/changes/update-benchmarking-single-core/specs/benchmarking/spec.md](./openspec/changes/update-benchmarking-single-core/specs/benchmarking/spec.md)
+and [RESEARCH.md](./openspec/changes/update-benchmarking-single-core/RESEARCH.md)
+for the target methodology.
 
 ## Benchmark Results
 
