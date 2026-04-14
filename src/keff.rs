@@ -247,58 +247,59 @@ fn binom_free_entropy(n: usize, confidence: f64) -> f64 {
     1.0 - binary_entropy(p)
 }
 
-/// Compute bitwise mutual information between adjacent array entries for f32.
-/// Returns 32 values ordered MSB (index 0 = sign bit) to LSB (index 31).
-fn bitinformation_adjacent_f32(data: &[f32]) -> Vec<f64> {
-    if data.len() < 2 {
-        return vec![0.0; 32];
-    }
-    let n = data.len() - 1;
-    let bits: Vec<u32> = data.iter().map(|x| x.to_bits()).collect();
-    (0..32)
-        .map(|i| {
-            let pos = 31 - i;
-            let mask = 1u32 << pos;
-            let (mut c00, mut c01, mut c10, mut c11) = (0usize, 0usize, 0usize, 0usize);
-            for j in 0..n {
-                let a = (bits[j] & mask) != 0;
-                let b = (bits[j + 1] & mask) != 0;
-                match (a, b) {
-                    (false, false) => c00 += 1,
-                    (false, true) => c01 += 1,
-                    (true, false) => c10 += 1,
-                    (true, true) => c11 += 1,
-                }
-            }
-            mi_from_counts(c00, c01, c10, c11, n)
-        })
-        .collect()
+/// Trait abstracting f32/f64 for bitinformation computation.
+trait BitFloat: Copy {
+    fn to_u64(self) -> u64;
+    const TOTAL_BITS: usize;
+    const MANTISSA_START: usize;
 }
 
-/// Same as `bitinformation_adjacent_f32` but for f64 (64 values).
-fn bitinformation_adjacent_f64(data: &[f64]) -> Vec<f64> {
+impl BitFloat for f32 {
+    fn to_u64(self) -> u64 {
+        self.to_bits() as u64
+    }
+    const TOTAL_BITS: usize = 32;
+    const MANTISSA_START: usize = 9; // 1 sign + 8 exponent
+}
+
+impl BitFloat for f64 {
+    fn to_u64(self) -> u64 {
+        self.to_bits()
+    }
+    const TOTAL_BITS: usize = 64;
+    const MANTISSA_START: usize = 12; // 1 sign + 11 exponent
+}
+
+/// Compute bitwise mutual information between adjacent array entries.
+/// Returns `T::TOTAL_BITS` values ordered MSB (index 0) to LSB.
+///
+/// Single pass over the array: each pair (a, b) is loaded once and updates
+/// all bit-position counters in the inner loop, instead of re-reading the
+/// array TOTAL_BITS times — ~half the memory loads on large inputs.
+fn bitinformation_adjacent<T: BitFloat>(data: &[T]) -> Vec<f64> {
     if data.len() < 2 {
-        return vec![0.0; 64];
+        return vec![0.0; T::TOTAL_BITS];
     }
     let n = data.len() - 1;
-    let bits: Vec<u64> = data.iter().map(|x| x.to_bits()).collect();
-    (0..64)
-        .map(|i| {
-            let pos = 63 - i;
+    let bits: Vec<u64> = data.iter().map(|x| x.to_u64()).collect();
+
+    // counts[bit_idx] = [c00, c01, c10, c11] where bit_idx 0 = MSB.
+    let mut counts: Vec<[u64; 4]> = vec![[0u64; 4]; T::TOTAL_BITS];
+    for j in 0..n {
+        let a = bits[j];
+        let b = bits[j + 1];
+        for bit_idx in 0..T::TOTAL_BITS {
+            let pos = T::TOTAL_BITS - 1 - bit_idx;
             let mask = 1u64 << pos;
-            let (mut c00, mut c01, mut c10, mut c11) = (0usize, 0usize, 0usize, 0usize);
-            for j in 0..n {
-                let a = (bits[j] & mask) != 0;
-                let b = (bits[j + 1] & mask) != 0;
-                match (a, b) {
-                    (false, false) => c00 += 1,
-                    (false, true) => c01 += 1,
-                    (true, false) => c10 += 1,
-                    (true, true) => c11 += 1,
-                }
-            }
-            mi_from_counts(c00, c01, c10, c11, n)
-        })
+            let bit_a = ((a & mask) != 0) as usize;
+            let bit_b = ((b & mask) != 0) as usize;
+            counts[bit_idx][(bit_a << 1) | bit_b] += 1;
+        }
+    }
+
+    counts
+        .iter()
+        .map(|c| mi_from_counts(c[0] as usize, c[1] as usize, c[2] as usize, c[3] as usize, n))
         .collect()
 }
 
@@ -326,31 +327,29 @@ fn mi_from_counts(c00: usize, c01: usize, c10: usize, c11: usize, n: usize) -> f
     if mi < 0.0 { 0.0 } else { mi }
 }
 
-/// Determine keepbits (mantissa bits) for f32 data at a target information level.
+/// Determine keepbits (mantissa bits) at a target information level.
+///
 /// Implements the BitInformation.jl algorithm:
 ///   1. mutual information between adjacent array entries, per bit position
 ///   2. zero out bits below the binomial free-entropy noise floor (confidence 0.99)
 ///   3. return smallest mantissa keepbits whose cumulative info ≥ inflevel * total
-pub fn get_keepbits_f32(data: &[f32], inflevel: f64) -> Result<usize, KeffError> {
+fn get_keepbits<T: BitFloat>(data: &[T], inflevel: f64) -> Result<usize, KeffError> {
     if data.len() < 2 {
         return Err(KeffError::new(
             "Need at least 2 values for bitinformation".to_string(),
         ));
     }
     if inflevel <= 0.0 || inflevel > 1.0 {
-        return Err(KeffError::new(
-            "inflevel must be in (0, 1]".to_string(),
-        ));
+        return Err(KeffError::new("inflevel must be in (0, 1]".to_string()));
     }
-    let mut info = bitinformation_adjacent_f32(data);
+    let mut info = bitinformation_adjacent(data);
     let floor = binom_free_entropy(data.len() - 1, 0.99);
     for h in info.iter_mut() {
         if *h <= floor {
             *h = 0.0;
         }
     }
-    // f32 layout: bit 0 = sign (MSB), bits 1..=8 = exponent, bits 9..=31 = mantissa.
-    let mantissa = &info[9..32];
+    let mantissa = &info[T::MANTISSA_START..T::TOTAL_BITS];
     let total: f64 = mantissa.iter().sum();
     if total == 0.0 {
         return Ok(1);
@@ -362,42 +361,15 @@ pub fn get_keepbits_f32(data: &[f32], inflevel: f64) -> Result<usize, KeffError>
             return Ok(i + 1);
         }
     }
-    Ok(23)
+    Ok(T::TOTAL_BITS - T::MANTISSA_START)
 }
 
-/// Determine keepbits (mantissa bits) for f64 data at a target information level.
+pub fn get_keepbits_f32(data: &[f32], inflevel: f64) -> Result<usize, KeffError> {
+    get_keepbits(data, inflevel)
+}
+
 pub fn get_keepbits_f64(data: &[f64], inflevel: f64) -> Result<usize, KeffError> {
-    if data.len() < 2 {
-        return Err(KeffError::new(
-            "Need at least 2 values for bitinformation".to_string(),
-        ));
-    }
-    if inflevel <= 0.0 || inflevel > 1.0 {
-        return Err(KeffError::new(
-            "inflevel must be in (0, 1]".to_string(),
-        ));
-    }
-    let mut info = bitinformation_adjacent_f64(data);
-    let floor = binom_free_entropy(data.len() - 1, 0.99);
-    for h in info.iter_mut() {
-        if *h <= floor {
-            *h = 0.0;
-        }
-    }
-    // f64 layout: bit 0 = sign, bits 1..=11 = exponent, bits 12..=63 = mantissa (52 bits).
-    let mantissa = &info[12..64];
-    let total: f64 = mantissa.iter().sum();
-    if total == 0.0 {
-        return Ok(1);
-    }
-    let mut acc = 0.0f64;
-    for (i, &h) in mantissa.iter().enumerate() {
-        acc += h;
-        if acc / total >= inflevel {
-            return Ok(i + 1);
-        }
-    }
-    Ok(52)
+    get_keepbits(data, inflevel)
 }
 
 #[cfg(test)]
@@ -487,15 +459,8 @@ mod tests {
     #[test]
     fn test_get_keepbits_f32_pure_noise_returns_one() {
         // Uncorrelated bits between neighbors → MI ≈ 0 → all below noise floor → 1 bit fallback.
-        let n = 4096;
-        let mut state: u64 = 0x12345;
-        let data: Vec<f32> = (0..n)
-            .map(|_| {
-                state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-                let u = ((state >> 33) as u32) & 0x007F_FFFF;
-                f32::from_bits(0x3F80_0000 | u)
-            })
-            .collect();
+        let mut rng = fastrand::Rng::with_seed(0x12345);
+        let data: Vec<f32> = (0..4096).map(|_| rng.f32()).collect();
         let kb = get_keepbits_f32(&data, 0.99).unwrap();
         assert_eq!(kb, 1);
     }

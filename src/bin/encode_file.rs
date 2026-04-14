@@ -6,7 +6,6 @@
 
 use bit_round::bitround::BitroundEncoder;
 use std::fs;
-use std::io::{Read, Write};
 
 fn parse_args() -> (String, String, u8) {
     let args: Vec<String> = std::env::args().collect();
@@ -44,26 +43,22 @@ fn parse_args() -> (String, String, u8) {
 fn main() {
     let (input_path, output_path, keepbits) = parse_args();
 
-    let mut file = fs::File::open(&input_path).expect("open input");
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes).expect("read input");
+    let bytes = fs::read(&input_path).expect("read input");
     assert!(
         bytes.len() % 4 == 0,
         "input size must be multiple of 4 bytes (f32)"
     );
-    let n = bytes.len() / 4;
-    let mut data = Vec::with_capacity(n);
-    for i in 0..n {
-        let mut buf = [0u8; 4];
-        buf.copy_from_slice(&bytes[i * 4..(i + 1) * 4]);
-        data.push(f32::from_le_bytes(buf));
-    }
+    let data: Vec<f32> = bytes
+        .chunks_exact(4)
+        .map(|c| f32::from_le_bytes(c.try_into().unwrap()))
+        .collect();
 
     let encoder = BitroundEncoder::new(keepbits).unwrap();
     let encoded: Vec<u32> = encoder.encode_f32(&data).expect("encode");
 
-    let mut out = fs::File::create(&output_path).expect("create output");
+    let mut out_bytes = Vec::with_capacity(encoded.len() * 4);
     for u in &encoded {
-        out.write_all(&u.to_le_bytes()).expect("write");
+        out_bytes.extend_from_slice(&u.to_le_bytes());
     }
+    fs::write(&output_path, &out_bytes).expect("write output");
 }
