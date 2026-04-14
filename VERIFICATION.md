@@ -1,6 +1,6 @@
 # Verification Strategy
 
-This document describes the verification strategy for the Rust bitround implementation against Python numcodecs and Julia bitround.jl reference implementations.
+This document describes the verification strategy for the Rust bitround implementation against Python numcodecs and Julia BitInformation.jl reference implementations.
 
 ## Overview
 
@@ -8,6 +8,32 @@ Verification ensures the Rust implementation produces **bit-identical output** t
 - Correctness guarantee
 - Fair benchmarking comparisons
 - Algorithm validation
+
+## Quick equivalence check (no Docker)
+
+For a fast end-to-end check against numcodecs and BitInformation.jl on
+byte-identical input, use the standalone driver:
+
+```bash
+cargo build --release --bin encode-file
+venv/bin/python scripts/verify_equivalence.py --sizes 10,100 --keepbits 16
+# add --no-julia if julia / BitInformation.jl is not installed
+```
+
+The driver generates one reference `f32` array, encodes it via:
+
+- `numcodecs.BitRound(keepbits=...).encode(...)` (Python)
+- `target/release/encode-file` ([`src/bin/encode_file.rs`](./src/bin/encode_file.rs))
+- `julia scripts/encode_file.jl` (uses BitInformation.jl's `round(x, keepbits)`)
+
+…then asserts the resulting `u32` streams are bitwise identical. This is the
+fastest path to validate "Rust ≡ numcodecs ≡ BitInformation.jl" and is
+used by the README's *Cross-implementation equivalence* section. Result on
+Apple M2 Pro / macOS 26.3 at sizes 10³ and 100³, keepbits=16: **PASS**.
+
+The Docker-based reference-data flow described below is a more thorough
+fixture-driven path and remains the canonical approach for `cargo test`
+verification.
 
 ## Architecture
 

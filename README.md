@@ -187,51 +187,112 @@ let signed_exp = signed_exponent(value);
 - **Bit Pattern Entropy**: Entropy from unique bit patterns
 - **Statistical Functions**: Binomial confidence intervals, free entropy
 
-## Performance Benchmarks
+## Cross-implementation equivalence
 
-**TODO**: Update benchmarks to use single-core execution as specified in `openspec/changes/update-benchmarking-single-core/specs/benchmarking/spec.md`. Key changes:
-- Pin to single CPU core for fair language comparison
-- Track memory allocations for Julia (GC-disable) and Rust (jemalloc)
-- Report allocation counts and GC time separately
+This crate's bitround output is **bitwise-identical** to both reference
+implementations on byte-identical input:
 
-**TODO**: The current benchmarks may not accurately reflect single-core performance. Re-run benchmarks with:
-- Single-core thread pinning (`taskset -c 0` on Linux)
-- Julia GC disabled during timing
-- Consistent allocator (jemalloc/mimalloc for Rust)
-- CPU frequency locked to base clock
+- [numcodecs.BitRound](https://github.com/zarr-developers/numcodecs/blob/main/src/numcodecs/bitround.py) (Python)
+- [BitInformation.jl](https://github.com/milankl/BitInformation.jl)'s `round(x, keepbits)` (Julia)
 
-See [BENCHMARK_SETUP.md](./BENCHMARK_SETUP.md) for methodology and [openspec/changes/update-benchmarking-single-core/RESEARCH.md](./openspec/changes/update-benchmarking-single-core/RESEARCH.md) for benchmarking best practices.
+To verify locally:
 
-Benchmarks measure encode/decode performance for 3D arrays (Float32) with edge lengths 10^n.
+```bash
+cargo build --release --bin encode-file
+venv/bin/python scripts/verify_equivalence.py --sizes 10,100 --keepbits 16
+```
 
-**Machine**: Apple M2 Pro (10 cores), 16 GB RAM, macOS 26.2
-**Configuration**: 16 bits, 10 iterations (2 for 1000³), 3 warmup iterations
+The script generates one reference `f32` array, encodes it with all three
+implementations on the same raw bytes, and asserts the resulting `u32`
+streams are bitwise equal. Skip Julia with `--no-julia`.
 
-| Array Size | Elements | Implementation | Encode (μs) | Decode (μs) |
-|------------|----------|----------------|-------------|-------------|
-| 1×1×1 | 1 | Python | 10.89 ± 1.26 | 1.80 ± 1.79 |
-| | | **Julia** | **0.04 ± 0.01** | **0.03 ± 0.04** |
-| | | Rust | 0.06 ± 0.03 | 0.09 ± 0.08 |
-| 10×10×10 | 1,000 | Python | 10.44 ± 0.69 | 1.10 ± 0.20 |
-| | | **Julia** | **0.17 ± 0.05** | **0.11 ± 0.06** |
-| | | Rust | 0.84 ± 0.02 | 0.96 ± 0.97 |
-| 100×100×100 | 1,000,000 | Python | 1264.83 ± 121.83 | 1.35 ± 0.79 |
-| | | **Julia** | **134.47 ± 2.85** | 126.58 ± 41.67 |
-| | | Rust | 833.18 ± 24.35 | 629.72 ± 71.18 |
-| 1000×1000×1000 | 1,000,000,000 | Python | 32,906,771 ± 353,711 | 1,823 ± 1,523 |
-| | | Julia | 6,083,679 ± 2,928,600 | 4,573,157 ± 487,245 |
-| | | **Rust** | **835,025 ± 2,165** | **3,087,767 ± 3,578,593** |
+How it works:
 
-> **TODO**: Re-run benchmarks with single-core constraints per `openspec/changes/update-benchmarking-single-coreing/spec.md`
->
-> **TODO/specs/benchmark**: Add allocation tracking and memory metrics to benchmark output per new spec.
+- Python path: `numcodecs.BitRound(keepbits=...).encode(flat)`
+- Rust path: `target/release/encode-file --input ... --keepbits ... --output ...`
+  ([`src/bin/encode_file.rs`](./src/bin/encode_file.rs))
+- Julia path: `julia scripts/encode_file.jl --input ... --keepbits ... --output ...`
+  ([`scripts/encode_file.jl`](./scripts/encode_file.jl))
 
-> **Warning**: These benchmarks may be biased. See [A Warning on
-> Mechanical Sympathy](https://matthewrocklin.com/blog/work/2017/03/09/biased-benchmarks)
-> by Matthew Rocklin for important caveats when comparing performance across
-> implementations.
->
-> For full methodology and running benchmarks, see [BENCHMARK_SETUP.md](./BENCHMARK_SETUP.md).
+Result on Apple M2 Pro / macOS 26.3 (sizes 10³ and 100³, keepbits=16):
+**PASS — all three implementations bitwise identical**.
+
+## Performance benchmarks
+
+Two harnesses live in this repo:
+
+1. **In-process timing** (`bench_python.py`, `bench_julia.jl`,
+   `cargo run --release --bin bench`) — wraps `encode`/`decode` only,
+   matched 3D array sizes and seed.
+2. **Subprocess time + peak memory** (`scripts/bench_memory.py`) — runs each
+   implementation as a fresh process under `/usr/bin/time -l`/`-v`, captures
+   wall time and peak RSS plus the in-process encode time. This is the
+   harness used for the table below.
+
+```bash
+cargo build --release --bin bench-oneshot
+venv/bin/python scripts/bench_memory.py --sizes 10,100 --keepbits 16 --repeats 3
+```
+
+### Time + peak RSS — keepbits=16, 3 repeats
+
+Encode time is measured inside each process around the encode call only
+(JIT/imports excluded). Wall and peak RSS are whole-process and therefore
+include runtime startup — Julia's RSS in particular is dominated by the JIT
+and the BitInformation.jl dependency tree.
+
+**Machine**: Apple M2 Pro, macOS 26.3 arm64. **Single-core pinning is not
+yet applied** (still TODO — see [BENCHMARK_SETUP.md](./BENCHMARK_SETUP.md)),
+so numbers are indicative.
+
+| Implementation | Size | Encode (median) | Wall (median) | Peak RSS |
+|----------------|------|------------------|----------------|----------|
+| python (numcodecs 0.16.5)     | 10³  | 24.7 μs  | 150 ms  | 37.8 MB  |
+| python (numcodecs 0.16.5)     | 100³ | 1.25 ms  | 160 ms  | 57.4 MB  |
+| rust (this repo)              | 10³  | 1.6 μs   | 10 ms   | 5.6 MB   |
+| rust (this repo)              | 100³ | 815.9 μs | 10 ms   | 13.3 MB  |
+| julia (BitInformation.jl 0.6.3) | 10³  | 0.3 μs   | 1.06 s  | 309.5 MB |
+| julia (BitInformation.jl 0.6.3) | 100³ | 259.6 μs | 1.08 s  | 321.0 MB |
+
+How to read the columns:
+
+- **Encode**: pure codec speed after warmup. Julia is fastest (tight
+  `@inbounds` loop JIT'd to vectorized native), Rust second, Python slowest.
+- **Wall**: cost of one CLI invocation. Rust dominates because Python and
+  Julia pay heavy startup; for batch/long-running jobs the encode column is
+  closer to what you'll see.
+- **Peak RSS**: includes the runtime. Rust ~5–13 MB, Python ~38–57 MB, Julia
+  ~310–321 MB.
+
+> **Warning**: These benchmarks are not yet single-core-pinned and noise can
+> be ±20% at sub-millisecond timings. See [A Warning on Mechanical
+> Sympathy](https://matthewrocklin.com/blog/work/2017/03/09/biased-benchmarks)
+> for caveats. For methodology, see [BENCHMARK_SETUP.md](./BENCHMARK_SETUP.md).
+
+## Information-based keepbits selection
+
+`keff::get_keepbits_f32` / `get_keepbits_f64` implements the
+[BitInformation.jl](https://github.com/milankl/BitInformation.jl) algorithm
+for picking how many mantissa bits to keep at a target information level:
+
+1. compute mutual information between adjacent array entries, per bit position
+2. zero out bits whose MI sits below the binomial free-entropy noise floor
+   (confidence 0.99) — this separates real information from sampling noise
+3. return the smallest number of mantissa bits whose cumulative MI ≥
+   `inflevel × total`
+
+```rust
+use bit_round::keff::get_keepbits_f32;
+
+let data: Vec<f32> = /* ... */;
+let keepbits = get_keepbits_f32(&data, 0.99).unwrap();
+let encoder = bit_round::bitround::BitroundEncoder::new(keepbits as u8).unwrap();
+let compressed = encoder.encode_f32(&data).unwrap();
+```
+
+The older entropy-based `calculate_keff_f32` / `calculate_keff_f64` are kept
+for backwards compatibility but do **not** match BitInformation.jl. Prefer
+`get_keepbits_*` for new code.
 
 ## Reference Implementation
 

@@ -38,4 +38,12 @@ path = "src/bin/generate_test_inputs.rs"
 name = "climate-bitround"
 path = "src/bin/climate_bitround.rs"
 
+[[bin]]
+name = "encode-file"
+path = "src/bin/encode_file.rs"
+
+[[bin]]
+name = "bench-oneshot"
+path = "src/bin/bench_oneshot.rs"
+
 
