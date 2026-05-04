@@ -1,0 +1,159 @@
+{
+  "shape": [
+    744,
+    1440,
+    721
+  ],
+  "zarr_chunks": [
+    744,
+    12,
+    12
+  ],
+  "read_chunks": [
+    1,
+    1440,
+    721
+  ],
+  "dask_x_values": [
+    1,
+    2,
+    4,
+    8
+  ],
+  "repeats": 2,
+  "dask_scheduler": "threads",
+  "runs": [
+    {
+      "x": 1,
+      "dask_chunks": [
+        744,
+        12,
+        12
+      ],
+      "n_write_tasks": 7320,
+      "n_zarr_chunks_per_dask_chunk": 1,
+      "approx_n_zarr_chunks_total": 7320,
+      "n_read_tasks_full_graph": 745,
+      "n_read_tasks_sliced_graph": 750,
+      "read_timesteps": 5,
+      "write_seconds": {
+        "median": 9.123640941999952,
+        "min": 8.990192753999963,
+        "max": 9.25708912999994,
+        "all": [
+          9.25708912999994,
+          8.990192753999963
+        ]
+      },
+      "read_seconds": {
+        "median": 8.524561421999977,
+        "min": 8.492483719999996,
+        "max": 8.556639123999958,
+        "all": [
+          8.492483719999996,
+          8.556639123999958
+        ]
+      },
+      "store_size_mb": 2768.2429027557373
+    },
+    {
+      "x": 2,
+      "dask_chunks": [
+        744,
+        24,
+        24
+      ],
+      "n_write_tasks": 1860,
+      "n_zarr_chunks_per_dask_chunk": 4,
+      "approx_n_zarr_chunks_total": 7320,
+      "n_read_tasks_full_graph": 745,
+      "n_read_tasks_sliced_graph": 750,
+      "read_timesteps": 5,
+      "write_seconds": {
+        "median": 6.168578552000042,
+        "min": 5.830341608000026,
+        "max": 6.506815496000058,
+        "all": [
+          5.830341608000026,
+          6.506815496000058
+        ]
+      },
+      "read_seconds": {
+        "median": 9.041669339000066,
+        "min": 8.68292646000009,
+        "max": 9.400412218000042,
+        "all": [
+          9.400412218000042,
+          8.68292646000009
+        ]
+      },
+      "store_size_mb": 2768.2628631591797
+    },
+    {
+      "x": 4,
+      "dask_chunks": [
+        744,
+        48,
+        48
+      ],
+      "n_write_tasks": 480,
+      "n_zarr_chunks_per_dask_chunk": 16,
+      "approx_n_zarr_chunks_total": 7320,
+      "n_read_tasks_full_graph": 745,
+      "n_read_tasks_sliced_graph": 750,
+      "read_timesteps": 5,
+      "write_seconds": {
+        "median": 5.009378680999987,
+        "min": 4.78171734,
+        "max": 5.237040021999974,
+        "all": [
+          5.237040021999974,
+          4.78171734
+        ]
+      },
+      "read_seconds": {
+        "median": 9.261312367000016,
+        "min": 8.896418998000058,
+        "max": 9.626205735999974,
+        "all": [
+          9.626205735999974,
+          8.896418998000058
+        ]
+      },
+      "store_size_mb": 2768.2381105422974
+    },
+    {
+      "x": 8,
+      "dask_chunks": [
+        744,
+        96,
+        96
+      ],
+      "n_write_tasks": 120,
+      "n_zarr_chunks_per_dask_chunk": 64,
+      "approx_n_zarr_chunks_total": 7320,
+      "n_read_tasks_full_graph": 745,
+      "n_read_tasks_sliced_graph": 750,
+      "read_timesteps": 5,
+      "write_seconds": {
+        "median": 5.246345435000023,
+        "min": 5.161852392000014,
+        "max": 5.330838478000032,
+        "all": [
+          5.161852392000014,
+          5.330838478000032
+        ]
+      },
+      "read_seconds": {
+        "median": 9.225778030000015,
+        "min": 8.562817131000088,
+        "max": 9.888738928999942,
+        "all": [
+          9.888738928999942,
+          8.562817131000088
+        ]
+      },
+      "store_size_mb": 2768.207339286804
+    }
+  ]
+}
